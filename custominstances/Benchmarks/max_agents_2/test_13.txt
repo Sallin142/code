@@ -1,0 +1,23 @@
+9 7
+@ @ @ @ @ @ @
+@ . . . . . @
+@ . @ @ @ . @
+@ . . . . . @
+@ @ @ . @ @ @
+@ . . . . . @
+@ . @ @ @ . @
+@ . . . . . @
+@ @ @ @ @ @ @
+2
+1 1 7 5
+7 5 1 1
+
+
+
+python run_experiments.py --instance Benchmarks/max_agents_2/test_18.txt --solver Prioritized
+python run_experiments.py --instance Benchmarks/max_agents_2/test_19.txt --solver Prioritized
+python run_experiments.py --instance Benchmarks/max_agents_2/test_20.txt --solver Prioritized
+python run_experiments.py --instance Benchmarks/max_agents_2/test_21.txt --solver Prioritized
+python run_experiments.py --instance Benchmarks/max_agents_2/test_22.txt --solver Prioritized
+python run_experiments.py --instance Benchmarks/max_agents_2/test_23.txt --solver Prioritized
+python run_experiments.py --instance Benchmarks/max_agents_2/test_24.txt --solver Prioritized
