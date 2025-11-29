@@ -1,7 +1,7 @@
 #!/usr/bin/python
 """
 Comprehensive MAPF Solver Benchmarking and Visualization Script
-Runs Prioritized, CBS Standard, and CBS Disjoint on benchmark instances
+Runs CBS CG, CBS Standard, and CBS Disjoint on benchmark instances
 and generates detailed per-test performance graphs with statistical analysis.
 """
 
@@ -18,7 +18,7 @@ from collections import defaultdict
 
 # Import MAPF solvers
 from cbs import CBSSolver
-from prioritized import PrioritizedPlanningSolver
+from CGSolver import CGSolver
 from run_experiments import import_mapf_instance
 from single_agent_planner import get_sum_of_cost
 
@@ -27,7 +27,7 @@ class ComprehensiveBenchmark:
         self.benchmark_dir = benchmark_dir
         self.repeat_count = repeat_count
         self.results = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # Store lists for multiple runs
-        self.solvers = ['Prioritized', 'CBS Standard', 'CBS Disjoint']
+        self.solvers = ['CG', 'CBS Standard', 'CBS Disjoint']
         self.colors = ['#3498db', '#e74c3c', '#2ecc71']  # Blue, Red, Green
         
     def load_instance(self, filename):
@@ -43,17 +43,17 @@ class ComprehensiveBenchmark:
         try:
             start_time = time.time()
             
-            if solver_name == 'Prioritized':
-                solver = PrioritizedPlanningSolver(my_map, starts, goals)
+            if solver_name == 'CG':
+                solver = CGSolver(my_map, starts, goals)
                 try:
-                    paths = solver.find_solution()
+                    paths = solver.find_solution(disjoint=True)
                 except BaseException as e:
                     if 'No solutions' in str(e):
                         paths = None
                     else:
                         raise e
-                expanded_nodes = 0  # Prioritized doesn't track this
-                generated_nodes = 0
+                expanded_nodes = getattr(solver, 'num_of_expanded', 0)
+                generated_nodes = getattr(solver, 'num_of_generated', 0)
             elif solver_name == 'CBS Standard':
                 solver = CBSSolver(my_map, starts, goals)
                 try:
