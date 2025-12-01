@@ -7,118 +7,123 @@ import copy
 
 
 class CGSolver(CBSSolver):
-    def get_cg_heuristic(self, grid, paths, starts, goals, hvals, constraints, cache=[], mdds=[]):
-        cardinals = []
+    def get_cg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints, all_paths=None, all_mdds=None):
+        cardinal_conflicts = []
+        
+        if all_paths is None:
+            all_paths = []
+        if all_mdds is None:
+            all_mdds = []
 
-        if (len(cache) == 0 and len(mdds) == 0):
+        if (len(all_paths) == 0 and len(all_mdds) == 0):
             for i in range(len(paths)):
-                optimal = get_all_optimal_paths(grid, starts[i], goals[i], hvals[i], i, constraints)
-                if (optimal == []):
+                newpaths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints)
+                if (newpaths == []):
                     return -1
-                _, nodes = buildMDDTree(optimal)
-                cache.append(optimal)
-                mdds.append(nodes)
+                _, nodes_dict = buildMDDTree(newpaths)
+                all_paths.append(newpaths)
+                all_mdds.append(nodes_dict)
 
         for i in range(len(paths)):
-            first = cache[i]
-            dict1 = mdds[i]
+            paths1 = all_paths[i]
+            nodes_dict1 = all_mdds[i]
 
             for j in range(i+1,len(paths)):
 
-                second = cache[j] 
-                dict2 = mdds[j] 
-                balanceMDDs(first, second, dict1, dict2)
+                paths2 = all_paths[j] 
+                nodes_dict2 = all_mdds[j] 
+                balanceMDDs(paths1, paths2, nodes_dict1, nodes_dict2)
                 
-                if (check_MDDs_for_conflict(dict1, dict2)):
-                    cardinals.append((i,j))
+                if (check_MDDs_for_conflict(nodes_dict1, nodes_dict2)):
+                    cardinal_conflicts.append((i,j))
         
         g = Graph(len(paths))
-        for conflict in cardinals:
+        for conflict in cardinal_conflicts:
             g.addEdge(conflict[0], conflict[1])
-        cover = g.getVertexCover()
-        return len(cover) 
+        vertex_cover = g.getVertexCover()
+        return len(vertex_cover) 
 
-    def find_solution(self, disjoint=True, initial=[], heuristic=0, logging = True):
+    def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results = True):
 
-        self.timer = timer.time()
+        self.start_time = timer.time()
 
         root = {'cost': 0,
-                'h': heuristic,
-                'constraints': initial,
+                'h': root_h,
+                'constraints': root_constraints,
                 'paths': [],
                 'collisions': []}
-        for i in range(self.agents):
-            path = a_star(self.grid, self.starts[i], self.goals[i], self.heuristics[i],
+        for i in range(self.num_of_agents):
+            path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
                           i, root['constraints'])
             if path is None:
                 raise BaseException('No solutions')
             root['paths'].append(path)
 
         root['cost'] = get_sum_of_cost(root['paths'])
-        root['h'] = self.get_cg_heuristic(self.grid, root['paths'], self.starts, self.goals, self.heuristics, root['constraints'])
+        root['h'] = self.get_cg_heuristic(self.my_map, root['paths'], self.starts, self.goals, self.heuristics, root['constraints'])
         root['collisions'] = detect_collisions(root['paths'])
         self.push_node(root)
 
-        while len(self.queue) > 0:
+        while len(self.open_list) > 0:
             curr = self.pop_node()
 
             if not curr['collisions']:
-                if(logging):
+                if(record_results):
                     self.print_results(curr)
                 return curr['paths']
             
             collision = curr['collisions'][0]
             constraints = disjoint_splitting(collision)
             for constraint in constraints:
-                blocked = False
+                is_conflicting = False
                 if constraint in curr['constraints']:
-                    blocked = True
+                    is_conflicting = True
                 else:
                     t = constraint['timestep']
-                    matching = [c for c in curr['constraints'] if c['timestep'] == t and c['agent'] == constraint['agent']]
-                    vertex = False
+                    constraints_at_t = [c for c in curr['constraints'] if c['timestep'] == t and c['agent'] == constraint['agent']]
+                    is_new_vertex_constraint = False
                     if len(constraint['loc']) == 1:
-                        vertex = True
+                        is_new_vertex_constraint = True
 
-                    for prev in matching:
-                        if len(prev['loc']) == 1:
-                            if prev['positive']:
-                                if vertex and not constraint['positive'] and constraint['loc'] == prev['loc']:
-                                    blocked = True
+                    for old_constraint in constraints_at_t:
+                        if len(old_constraint['loc']) == 1:
+                            if old_constraint['positive']:
+                                if is_new_vertex_constraint and not constraint['positive'] and constraint['loc'] == old_constraint['loc']:
+                                    is_conflicting = True
                                     break
-                                if vertex and constraint['positive'] and constraint['loc'] != prev['loc']:
-                                    blocked = True
+                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'] != old_constraint['loc']:
+                                    is_conflicting = True
                                     break
-                                if not vertex and constraint['positive'] and constraint['loc'][1] != prev['loc'][0]:
-                                    blocked = True
+                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'][1] != old_constraint['loc'][0]:
+                                    is_conflicting = True
                                     break
                             else:
-                                if vertex and constraint['positive'] and constraint['loc'] == prev['loc']:
-                                    blocked = True
+                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'] == old_constraint['loc']:
+                                    is_conflicting = True
                                     break
-                                if not vertex and constraint['positive'] and constraint['loc'][1] == prev['loc'][0]:
-                                    blocked = True
+                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'][1] == old_constraint['loc'][0]:
+                                    is_conflicting = True
                                     break
                         else:
-                            if prev['positive']:
-                                if vertex and constraint['positive'] and constraint['loc'][0] != prev['loc'][1]:
-                                    blocked = True
+                            if old_constraint['positive']:
+                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'][0] != old_constraint['loc'][1]:
+                                    is_conflicting = True
                                     break
-                                if vertex and not constraint['positive'] and constraint['loc'][0] == prev['loc'][1]:
-                                    blocked = True
+                                if is_new_vertex_constraint and not constraint['positive'] and constraint['loc'][0] == old_constraint['loc'][1]:
+                                    is_conflicting = True
                                     break
-                                if not vertex and constraint['positive']:
-                                    blocked = True
+                                if not is_new_vertex_constraint and constraint['positive']:
+                                    is_conflicting = True
                                     break
-                                if not vertex and not constraint['positive'] and constraint['loc'] == prev['loc']:
-                                    blocked = True
+                                if not is_new_vertex_constraint and not constraint['positive'] and constraint['loc'] == old_constraint['loc']:
+                                    is_conflicting = True
                                     break
                             else:
-                                if not vertex and constraint['positive'] and constraint['loc'] == prev['loc']:
-                                    blocked = True
+                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'] == old_constraint['loc']:
+                                    is_conflicting = True
                                     break
                 
-                if blocked:
+                if is_conflicting:
                     continue
                 child = {}
                 child['constraints'] = copy.deepcopy(curr['constraints'])
@@ -126,31 +131,31 @@ class CGSolver(CBSSolver):
                     child['constraints'].append(constraint)
                 child['paths']= copy.deepcopy(curr['paths'])
 
-                skip = False
+                prune_child = False
                 if constraint['positive']:
-                    affected = paths_violate_constraint(constraint, child['paths'])
-                    for i in affected:
-                        route = a_star(self.grid, self.starts[i], self.goals[i], self.heuristics[i],
+                    conflicted_agents = paths_violate_constraint(constraint, child['paths'])
+                    for i in conflicted_agents:
+                        new_path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
                             i, child['constraints'])
-                        if route is None:
-                            skip = True
+                        if new_path is None:
+                            prune_child = True
                             break
                         else:
-                            child['paths'][i] = route
-                if skip:
+                            child['paths'][i] = new_path
+                if prune_child:
                     continue
 
                 agent = constraint['agent']
-                path = a_star(self.grid, self.starts[agent], self.goals[agent], self.heuristics[agent],
+                path = a_star(self.my_map, self.starts[agent], self.goals[agent], self.heuristics[agent],
                           agent, child['constraints'])
                 if path is not None:
                     child['paths'][agent] = path
                     child['collisions'] = detect_collisions(child['paths'])
                     child['cost'] = get_sum_of_cost(child['paths'])
-                    child['h'] = self.get_cg_heuristic(self.grid, child['paths'], self.starts, self.goals, self.heuristics, child['constraints'])
+                    child['h'] = self.get_cg_heuristic(self.my_map, child['paths'], self.starts, self.goals, self.heuristics, child['constraints'])
 
                     self.push_node(child)
 
-        if(logging):
+        if(record_results):
             self.print_results(root)
         return root['paths']
