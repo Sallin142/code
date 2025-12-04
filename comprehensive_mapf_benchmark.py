@@ -19,6 +19,7 @@ from collections import defaultdict
 # Import MAPF solvers
 from cbs import CBSSolver
 from CGSolver import CGSolver
+from DGSolver import DGSolver
 from run_experiments import import_mapf_instance
 from single_agent_planner import get_sum_of_cost
 
@@ -27,8 +28,8 @@ class ComprehensiveBenchmark:
         self.benchmark_dir = benchmark_dir
         self.repeat_count = repeat_count
         self.results = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # Store lists for multiple runs
-        self.solvers = ['CG', 'CBS Standard', 'CBS Disjoint']
-        self.colors = ['#3498db', '#e74c3c', '#2ecc71']  # Blue, Red, Green
+        self.solvers = ['CG', 'DG', 'CBS Standard', 'CBS Disjoint']
+        self.colors = ['#3498db', '#9b59b6', '#e74c3c', '#2ecc71']  # Blue, Purple, Red, Green
         
     def load_instance(self, filename):
         """Load a MAPF instance from file"""
@@ -54,6 +55,17 @@ class ComprehensiveBenchmark:
                         raise e
                 expanded_nodes = getattr(solver, 'num_of_expanded', 0)
                 generated_nodes = getattr(solver, 'num_of_generated', 0)
+            elif solver_name == 'DG':
+                solver = DGSolver( my_map, starts, goals)
+                try:
+                    paths = solver.find_solution(disjoint = True, record_results = False)
+                except BaseException as e:
+                    if 'No solutions' in str( e):
+                        paths = None
+                    else:
+                        raise e
+                expanded_nodes = getattr(solver, 'num_of_expanded', 0)
+                generated_nodes = getattr(solver, 'num_of_generated' , 0)
             elif solver_name == 'CBS Standard':
                 solver = CBSSolver(my_map, starts, goals)
                 try:
