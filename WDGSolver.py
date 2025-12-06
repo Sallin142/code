@@ -4,6 +4,9 @@ from mvc import Graph
 from single_agent_planner import a_star, get_sum_of_cost
 from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint
 import copy
+from CGSolver import CGSolver
+import pulp as pl
+from pulp import LpProblem, LpMinimize, LpVariable, value
 
 class WDGSolver(CBSSolver):
 
@@ -41,12 +44,27 @@ class WDGSolver(CBSSolver):
                 if check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0]):
                     dependencies.append((i, j))
 
-        g = Graph(len(paths))
-        for dependency in dependencies:
-            g.addEdge(dependency[0], dependency[1])
-        
-        vertex_cover = g.getVertexCover()
-        return len(vertex_cover)
+        model = LpProblem("WDG_heuristic", LpMinimize)
+        lp_agents = {}
+        for agent1, agent2 in dependencies:
+            if agent1 not in lp_agents:
+                lp_agents[agent1] = LpVariable(f"agent{agent1}_weight", lowBound=0, cat="Integer")
+            if agent2 not in lp_agents:
+                lp_agents[agent2] = LpVariable(f"agent{agent2}_weight", lowBound=0, cat="Integer")
+
+            joint_paths = CGSolver(my_map, [starts[agent1], starts[agent2]], [goals[agent1], goals[agent2]]).find_solution(False)
+            if joint_paths is None:
+                return -1
+
+            joint_cost = get_sum_of_cost(joint_paths)
+            individual_cost = len(all_paths[agent1][0]) + len(all_paths[agent2][0])
+            weight = individual_cost - joint_cost
+
+            model += lp_agents[agent1] + lp_agents[agent2] >= weight
+
+        model += sum(lp_agents.values())
+        model.solve(pl.PULP_CBC_CMD(msg=False))
+        return value(model.objective)
     
     def push_node(self, node):
         """Push node to open list with f = g + h prioritization."""
