@@ -44,6 +44,7 @@ class WDGSolver(CBSSolver):
                 if check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0]):
                     dependencies.append((i, j))
 
+        # Compute heuristic
         model = LpProblem("WDG_heuristic", LpMinimize)
         lp_agents = {}
         for agent1, agent2 in dependencies:
@@ -52,6 +53,7 @@ class WDGSolver(CBSSolver):
             if agent2 not in lp_agents:
                 lp_agents[agent2] = LpVariable(f"agent{agent2}_weight", lowBound=0, cat="Integer")
 
+            # Compute joint paths for agents
             joint_paths = CGSolver(my_map, [starts[agent1], starts[agent2]], [goals[agent1], goals[agent2]]).find_solution(False)
             if joint_paths is None:
                 return -1
@@ -60,8 +62,10 @@ class WDGSolver(CBSSolver):
             individual_cost = len(all_paths[agent1][0]) + len(all_paths[agent2][0])
             weight = individual_cost - joint_cost
 
+            # Constraint for edge weight
             model += lp_agents[agent1] + lp_agents[agent2] >= weight
 
+        # Minimize sum of agent weights
         model += sum(lp_agents.values())
         model.solve(pl.PULP_CBC_CMD(msg=False))
         return value(model.objective)
