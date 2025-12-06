@@ -4,6 +4,8 @@ import glob
 from pathlib import Path
 from cbs import CBSSolver
 from CGSolver import CGSolver
+from DGSolver import DGSolver
+from WDGSolver import WDGSolver
 from independent import IndependentSolver
 from prioritized import PrioritizedPlanningSolver
 from visualize import Animation
@@ -100,6 +102,14 @@ if __name__ == '__main__':
             print("***Run CGS***")
             cgs = CGSolver(my_map, starts, goals)
             paths = cgs.find_solution(args.disjoint)
+        elif args.solver == "DGS":
+            print("***Run DGS***")
+            dgs = DGSolver(my_map, starts, goals)
+            paths = dgs.find_solution(args.disjoint)
+        elif args.solver == "WDGS":
+            print("***Run WDGS***")
+            wdgs = WDGSolver(my_map, starts, goals)
+            paths = wdgs.find_solution(args.disjoint)
         elif args.solver == "Independent":
             print("***Run Independent***")
             solver = IndependentSolver(my_map, starts, goals)
