@@ -2,25 +2,22 @@ import time as timer
 from mdd import buildMDDTree, get_all_optimal_paths, buildJointMDD, check_jointMDD_for_dependency
 from mvc import Graph
 from single_agent_planner import a_star, get_sum_of_cost
-from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint
+from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint, detect_collision
 import copy
 
 
 class DGSolver(CBSSolver):
 
-    def get_dg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints ):
+    def get_dg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints):
         dependencies = []
-        
         all_paths = []
         all_mdds = []
         
         for i in range(len(paths)):
-        
-            optimal_paths = get_all_optimal_paths(my_map, starts[i], goals[i],low_level_h[i], i, constraints)
+            optimal_paths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints)
             if not optimal_paths:
-                return -1
+                return len(paths)
             
-    
             root_node, nodes_dict = buildMDDTree(optimal_paths)
             all_paths.append(optimal_paths)
             all_mdds.append((root_node, nodes_dict))
@@ -33,14 +30,24 @@ class DGSolver(CBSSolver):
                 paths_j = all_paths[j]
                 root_j, nodes_dict_j = all_mdds[j]
                 
-                # Build joint MDD for agents i and j
-                joint_root, joint_bottom = buildJointMDD(
-                    paths_i, paths_j, 
-                    root_i, nodes_dict_i,
-                    root_j, nodes_dict_j
-                )
+                collision = detect_collision(paths[i], paths[j])
+                if collision is None:
+                    continue 
+                
 
-                if check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0]):
+                try:
+                    joint_root, joint_bottom = buildJointMDD(
+                        paths_i, paths_j, 
+                        root_i, nodes_dict_i,
+                        root_j, nodes_dict_j
+                    )
+                    
+                    is_dependent = check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0])
+                    
+                    if is_dependent:
+                        dependencies.append((i, j))
+                        
+                except Exception as e:
                     dependencies.append((i, j))
         
         g = Graph(len(paths))
@@ -51,15 +58,14 @@ class DGSolver(CBSSolver):
         return len(vertex_cover)
     
     def push_node(self, node):
-        """Push node to open list with f = g + h prioritization."""
         import heapq
         f_val = node['cost'] + node['h']
-        heapq.heappush(self.open_list, (f_val, len(node['collisions']), self.num_of_generated, node))
+        heapq.heappush(self.open_list, (f_val, len(node['collisions']), 
+                      self.num_of_generated, node))
         print("Generate node {}".format(self.num_of_generated))
         self.num_of_generated += 1
     
-    def find_solution(self, disjoint = True, root_constraints = [], root_h = 0, record_results = True):
-
+    def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results=True):
         self.start_time = timer.time()
    
         root = {
@@ -77,18 +83,15 @@ class DGSolver(CBSSolver):
                 raise BaseException('No solutions')
             root['paths'].append(path)
         
-  
         root['cost'] = get_sum_of_cost(root['paths'])
         root['h'] = self.get_dg_heuristic(self.my_map, root['paths'], self.starts, 
                                           self.goals, self.heuristics, root['constraints'])
         root['collisions'] = detect_collisions(root['paths'])
         self.push_node(root)
         
-  
         while len(self.open_list) > 0:
             curr = self.pop_node()
             
-     
             if not curr['collisions']:
                 if record_results:
                     self.print_results(curr)
@@ -109,7 +112,6 @@ class DGSolver(CBSSolver):
                     child['constraints'].append(constraint)
                 child['paths'] = copy.deepcopy(curr['paths'])
                 
-   
                 prune_child = False
                 if constraint['positive']:
                     conflicted_agents = paths_violate_constraint(constraint, child['paths'])
@@ -144,7 +146,6 @@ class DGSolver(CBSSolver):
         return None
     
     def _is_conflicting_constraint(self, constraint, existing_constraints):
-
         if constraint in existing_constraints:
             return True
         
@@ -176,7 +177,6 @@ class DGSolver(CBSSolver):
                        constraint['loc'][1] == old_constraint['loc'][0]:
                         return True
             
-            # Edge constraint conflicts
             else:
                 if old_constraint['positive']:
                     if is_new_vertex_constraint and constraint['positive'] and \
@@ -197,10 +197,9 @@ class DGSolver(CBSSolver):
         
         return False
     
-    def standard_splitting(self, collision ):
+    def standard_splitting(self, collision):
         constraints = []
         if len(collision['loc']) == 1:
-            #vertex collision
             constraints.append({
                 'agent': collision['a1'],
                 'loc': collision['loc'],
@@ -208,13 +207,12 @@ class DGSolver(CBSSolver):
                 'positive': False
             })
             constraints.append({
-                'agent': collision['a2' ],
+                'agent': collision['a2'],
                 'loc': collision['loc'],
                 'timestep': collision['timestep'],
                 'positive': False
             })
         else:
-            # edge collision
             constraints.append({
                 'agent': collision['a1'],
                 'loc': [collision['loc'][0], collision['loc'][1]],
@@ -228,5 +226,3 @@ class DGSolver(CBSSolver):
                 'positive': False
             })
         return constraints
-    
-
