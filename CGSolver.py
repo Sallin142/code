@@ -7,7 +7,9 @@ import copy
 
 
 class CGSolver(CBSSolver):
-    def get_cg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints, all_paths=None, all_mdds=None):
+ 
+    
+    def get_cg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints, all_paths = None, all_mdds = None, max_paths = 200):
         cardinal_conflicts = []
         
         if all_paths is None:
@@ -15,10 +17,10 @@ class CGSolver(CBSSolver):
         if all_mdds is None:
             all_mdds = []
 
-        if (len(all_paths) == 0 and len(all_mdds) == 0):
+        if len(all_paths) == 0 and len(all_mdds) == 0:
             for i in range(len(paths)):
-                newpaths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints)
-                if (newpaths == []):
+                newpaths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints, max_paths=max_paths)
+                if not newpaths:
                     return -1
                 _, nodes_dict = buildMDDTree(newpaths)
                 all_paths.append(newpaths)
@@ -28,30 +30,33 @@ class CGSolver(CBSSolver):
             paths1 = all_paths[i]
             nodes_dict1 = all_mdds[i]
 
-            for j in range(i+1,len(paths)):
-
+            for j in range(i+1, len(paths)):
                 paths2 = all_paths[j] 
-                nodes_dict2 = all_mdds[j] 
+                nodes_dict2 = all_mdds[j]
+                
                 balanceMDDs(paths1, paths2, nodes_dict1, nodes_dict2)
                 
-                if (check_MDDs_for_conflict(nodes_dict1, nodes_dict2)):
-                    cardinal_conflicts.append((i,j))
+                if check_MDDs_for_conflict(nodes_dict1, nodes_dict2):
+                    cardinal_conflicts.append((i, j))
         
         g = Graph(len(paths))
         for conflict in cardinal_conflicts:
             g.addEdge(conflict[0], conflict[1])
+        
         vertex_cover = g.getVertexCover()
-        return len(vertex_cover) 
+        return len(vertex_cover)
 
-    def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results = True):
-
+    def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results=True):
         self.start_time = timer.time()
 
-        root = {'cost': 0,
-                'h': root_h,
-                'constraints': root_constraints,
-                'paths': [],
-                'collisions': []}
+        root = {
+            'cost': 0,
+            'h': root_h,
+            'constraints': root_constraints,
+            'paths': [],
+            'collisions': []
+        }
+        
         for i in range(self.num_of_agents):
             path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
                           i, root['constraints'])
@@ -60,7 +65,8 @@ class CGSolver(CBSSolver):
             root['paths'].append(path)
 
         root['cost'] = get_sum_of_cost(root['paths'])
-        root['h'] = self.get_cg_heuristic(self.my_map, root['paths'], self.starts, self.goals, self.heuristics, root['constraints'])
+        root['h'] = self.get_cg_heuristic(self.my_map, root['paths'], self.starts, 
+                                          self.goals, self.heuristics, root['constraints'])
         root['collisions'] = detect_collisions(root['paths'])
         self.push_node(root)
 
@@ -68,94 +74,107 @@ class CGSolver(CBSSolver):
             curr = self.pop_node()
 
             if not curr['collisions']:
-                if(record_results):
+                if record_results:
                     self.print_results(curr)
                 return curr['paths']
             
             collision = curr['collisions'][0]
             constraints = disjoint_splitting(collision)
+            
             for constraint in constraints:
-                is_conflicting = False
-                if constraint in curr['constraints']:
-                    is_conflicting = True
-                else:
-                    t = constraint['timestep']
-                    constraints_at_t = [c for c in curr['constraints'] if c['timestep'] == t and c['agent'] == constraint['agent']]
-                    is_new_vertex_constraint = False
-                    if len(constraint['loc']) == 1:
-                        is_new_vertex_constraint = True
-
-                    for old_constraint in constraints_at_t:
-                        if len(old_constraint['loc']) == 1:
-                            if old_constraint['positive']:
-                                if is_new_vertex_constraint and not constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'] != old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'][1] != old_constraint['loc'][0]:
-                                    is_conflicting = True
-                                    break
-                            else:
-                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'][1] == old_constraint['loc'][0]:
-                                    is_conflicting = True
-                                    break
-                        else:
-                            if old_constraint['positive']:
-                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'][0] != old_constraint['loc'][1]:
-                                    is_conflicting = True
-                                    break
-                                if is_new_vertex_constraint and not constraint['positive'] and constraint['loc'][0] == old_constraint['loc'][1]:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and constraint['positive']:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and not constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                            else:
-                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
+                is_conflicting = self._is_conflicting_constraint(constraint, curr['constraints'])
                 
                 if is_conflicting:
                     continue
+                
                 child = {}
                 child['constraints'] = copy.deepcopy(curr['constraints'])
                 if constraint not in child['constraints']:
                     child['constraints'].append(constraint)
-                child['paths']= copy.deepcopy(curr['paths'])
+                child['paths'] = copy.deepcopy(curr['paths'])
 
                 prune_child = False
                 if constraint['positive']:
                     conflicted_agents = paths_violate_constraint(constraint, child['paths'])
                     for i in conflicted_agents:
-                        new_path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
-                            i, child['constraints'])
+                        new_path = a_star(self.my_map, self.starts[i], self.goals[i], 
+                                        self.heuristics[i], i, child['constraints'])
                         if new_path is None:
                             prune_child = True
                             break
                         else:
                             child['paths'][i] = new_path
+                
                 if prune_child:
                     continue
 
                 agent = constraint['agent']
-                path = a_star(self.my_map, self.starts[agent], self.goals[agent], self.heuristics[agent],
-                          agent, child['constraints'])
+                path = a_star(self.my_map, self.starts[agent], self.goals[agent], 
+                            self.heuristics[agent], agent, child['constraints'])
+                
                 if path is not None:
                     child['paths'][agent] = path
                     child['collisions'] = detect_collisions(child['paths'])
                     child['cost'] = get_sum_of_cost(child['paths'])
-                    child['h'] = self.get_cg_heuristic(self.my_map, child['paths'], self.starts, self.goals, self.heuristics, child['constraints'])
-
+                    child['h'] = self.get_cg_heuristic(self.my_map, child['paths'], 
+                                                       self.starts, self.goals, 
+                                                       self.heuristics, child['constraints'])
                     self.push_node(child)
 
-        if(record_results):
+        if record_results:
             self.print_results(root)
         return root['paths']
+    
+    def _is_conflicting_constraint(self, constraint, existing_constraints):
+        if constraint in existing_constraints:
+            return True
+        
+        t = constraint['timestep']
+        constraints_at_t = [c for c in existing_constraints 
+                           if c['timestep'] == t and c['agent'] == constraint['agent']]
+        
+        is_new_vertex_constraint = len(constraint['loc']) == 1
+        
+        for old_constraint in constraints_at_t:
+            is_old_vertex_constraint = len(old_constraint['loc']) == 1
+            
+            if is_old_vertex_constraint:
+                if old_constraint['positive']:
+
+                    if is_new_vertex_constraint and not constraint['positive'] and \
+                       constraint['loc'] == old_constraint['loc']:
+                        return True  
+                    if is_new_vertex_constraint and constraint['positive'] and \
+                       constraint['loc'] != old_constraint['loc']:
+                        return True  
+                    if not is_new_vertex_constraint and constraint['positive'] and \
+                       constraint['loc'][1] != old_constraint['loc'][0]:
+                        return True  
+                else:
+                
+                    if is_new_vertex_constraint and constraint['positive'] and \
+                       constraint['loc'] == old_constraint['loc']:
+                        return True  
+                    if not is_new_vertex_constraint and constraint['positive'] and \
+                       constraint['loc'][1] == old_constraint['loc'][0]:
+                        return True  
+     
+            else:
+                if old_constraint['positive']:
+                    if is_new_vertex_constraint and constraint['positive'] and \
+                       constraint['loc'][0] != old_constraint['loc'][1]:
+                        return True
+                    if is_new_vertex_constraint and not constraint['positive'] and \
+                       constraint['loc'][0] == old_constraint['loc'][1]:
+                        return True 
+                    if not is_new_vertex_constraint and constraint['positive']:
+                        return True  
+                    if not is_new_vertex_constraint and not constraint['positive'] and \
+                       constraint['loc'] == old_constraint['loc']:
+                        return True  
+                else:
+                    if not is_new_vertex_constraint and constraint['positive'] and \
+                       constraint['loc'] == old_constraint['loc']:
+                        return True  
+        
+        return False
