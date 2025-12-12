@@ -1,12 +1,18 @@
 import time as timer
-from mdd import buildMDDTree, get_all_optimal_paths, buildJointMDD, check_jointMDD_for_dependency
+from mdd import buildMDDTree, get_all_optimal_paths, buildJointMDD, check_jointMDD_for_dependency, check_MDDs_for_conflict, balanceMDDs
 from mvc import Graph
 from single_agent_planner import a_star, get_sum_of_cost
-from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint, detect_collision
+from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint
 import copy
+from heuristic_cache import HeuristicCache
 
 
 class DGSolver(CBSSolver):
+
+    def __init__(self, my_map, starts, goals):
+        """Initialize with cache."""
+        super().__init__(my_map, starts, goals)
+        self.cache = HeuristicCache()
 
     def get_dg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints):
         dependencies = []
@@ -14,42 +20,75 @@ class DGSolver(CBSSolver):
         all_mdds = []
         
         for i in range(len(paths)):
-            optimal_paths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints)
-            if not optimal_paths:
-                return len(paths)
+            cached_mdd = self.cache.get_mdd(i, constraints)
             
-            root_node, nodes_dict = buildMDDTree(optimal_paths)
+            if cached_mdd is not None:
+                optimal_paths, root_node, nodes_dict = cached_mdd
+            else:
+                optimal_paths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints, max_paths=200)
+                if not optimal_paths:
+                    return len(paths)  # Upper bound
+                
+                root_node, nodes_dict = buildMDDTree(optimal_paths)
+                self.cache.store_mdd(i, constraints, optimal_paths, root_node, nodes_dict)
+            
             all_paths.append(optimal_paths)
             all_mdds.append((root_node, nodes_dict))
         
-        for i in range(len(paths)):
+        # get collisions from solution
+        current_collisions = detect_collisions(paths)
+        
+        # build set of agent pairs that have collisions
+        collision_pairs = set()
+        for collision in current_collisions:
+            a1, a2 = collision['a1'], collision['a2']
+            if a1 > a2:
+                a1, a2 = a2, a1
+            collision_pairs.add((a1, a2))
+        
+        # check all pairs that have collisions
+        for i, j in collision_pairs:
+            # check cache first
+            cached_dep = self.cache.get_dependency(i, j, constraints)
+            
+            if cached_dep is not None:
+                if cached_dep:
+                    dependencies.append((i, j))
+                continue
+            
+            # compute dependency
             paths_i = all_paths[i]
             root_i, nodes_dict_i = all_mdds[i]
+            paths_j = all_paths[j]
+            root_j, nodes_dict_j = all_mdds[j]
             
-            for j in range(i + 1, len(paths)):
-                paths_j = all_paths[j]
-                root_j, nodes_dict_j = all_mdds[j]
+            # cardinal conflict check (fast path)
+            balanceMDDs(paths_i, paths_j, nodes_dict_i, nodes_dict_j)
+            if check_MDDs_for_conflict(nodes_dict_i, nodes_dict_j):
+                dependencies.append((i, j))
+                self.cache.store_dependency(i, j, constraints, True)
+                continue
+            
+            # joint MDD check
+            try:
+                joint_root, joint_bottom = buildJointMDD(
+                    paths_i, paths_j, 
+                    root_i, nodes_dict_i,
+                    root_j, nodes_dict_j
+                )
                 
-                collision = detect_collision(paths[i], paths[j])
-                if collision is None:
-                    continue 
+                is_dependent = check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0])
                 
-
-                try:
-                    joint_root, joint_bottom = buildJointMDD(
-                        paths_i, paths_j, 
-                        root_i, nodes_dict_i,
-                        root_j, nodes_dict_j
-                    )
-                    
-                    is_dependent = check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0])
-                    
-                    if is_dependent:
-                        dependencies.append((i, j))
-                        
-                except Exception as e:
+                if is_dependent:
                     dependencies.append((i, j))
+                
+                self.cache.store_dependency(i, j, constraints, is_dependent)
+                    
+            except Exception as e:
+                dependencies.append((i, j))
+                self.cache.store_dependency(i, j, constraints, True)
         
+        # Build dependency graph and find MVC
         g = Graph(len(paths))
         for dependency in dependencies:
             g.addEdge(dependency[0], dependency[1])
@@ -66,6 +105,7 @@ class DGSolver(CBSSolver):
         self.num_of_generated += 1
     
     def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results=True):
+        """Find optimal MAPF solution using CBS with DG heuristic."""
         self.start_time = timer.time()
    
         root = {
@@ -95,6 +135,7 @@ class DGSolver(CBSSolver):
             if not curr['collisions']:
                 if record_results:
                     self.print_results(curr)
+                    self.cache.print_stats()  # Print cache statistics
                 return curr['paths']
             
             collision = curr['collisions'][0]
@@ -143,9 +184,11 @@ class DGSolver(CBSSolver):
         
         if record_results:
             self.print_results(root)
+            self.cache.print_stats()
         return None
     
     def _is_conflicting_constraint(self, constraint, existing_constraints):
+        """Check if a new constraint conflicts with existing constraints."""
         if constraint in existing_constraints:
             return True
         
@@ -176,7 +219,6 @@ class DGSolver(CBSSolver):
                     if not is_new_vertex_constraint and constraint['positive'] and \
                        constraint['loc'][1] == old_constraint['loc'][0]:
                         return True
-            
             else:
                 if old_constraint['positive']:
                     if is_new_vertex_constraint and constraint['positive'] and \
@@ -198,6 +240,7 @@ class DGSolver(CBSSolver):
         return False
     
     def standard_splitting(self, collision):
+        """Create standard negative constraints for a collision."""
         constraints = []
         if len(collision['loc']) == 1:
             constraints.append({
