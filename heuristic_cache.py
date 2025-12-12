@@ -9,6 +9,9 @@ class HeuristicCache:
         
         # Delta cache: (agent_i, agent_j, constraints_hash) -> int
         self.delta_cache = {}
+
+        # WDG heuristic cache: constraints_key -> int
+        self.wdg_cache = {}
         
         # Statistics
         self.mdd_hits = 0
@@ -17,6 +20,8 @@ class HeuristicCache:
         self.dep_misses = 0
         self.delta_hits = 0
         self.delta_misses = 0
+        self.wdg_hits = 0
+        self.wdg_misses = 0
     
     def _hash_constraints(self, agent_id, constraints):
 
@@ -36,6 +41,19 @@ class HeuristicCache:
         # Sort for consistency
         relevant.sort()
         return tuple(relevant)
+    
+    def _hash_constraints_global(self, constraints):
+        """
+        Produce an order-independent global signature for the full constraint set.
+        Each constraint represented as (agent, loc-tuple, timestep, positive).
+        Sorted to make it independent of ordering.
+        """
+        items = []
+        for c in constraints:
+            loc_tuple = tuple(c['loc']) if isinstance(c['loc'], list) else (c['loc'],)
+            items.append((c['agent'], loc_tuple, c['timestep'], bool(c.get('positive', False))))
+        items.sort()
+        return tuple(items)
     
     def get_mdd(self, agent_id, constraints):
 
@@ -108,6 +126,29 @@ class HeuristicCache:
         key = (agent_i, agent_j, hash_i, hash_j)
         
         self.delta_cache[key] = delta
+
+    def get_pair_weight(self, agent_i, agent_j, constraints):
+        """Wrapper for get_delta (more descriptive)."""
+        return self.get_delta(agent_i, agent_j, constraints)
+
+    def store_pair_weight(self, agent_i, agent_j, constraints, delta):
+        """Wrapper for store_delta (more descriptive)."""
+        self.store_delta(agent_i, agent_j, constraints, delta)
+
+    def get_wdg(self, constraints):
+        """Return cached WDG heuristic value for the full constraint set."""
+        key = self._hash_constraints_global(constraints)
+        if key in self.wdg_cache:
+            self.wdg_hits += 1
+            return self.wdg_cache[key]
+        else:
+            self.wdg_misses += 1
+            return None
+
+    def store_wdg(self, constraints, hval):
+        """Store final WDG heuristic value for the full constraint set."""
+        key = self._hash_constraints_global(constraints)
+        self.wdg_cache[key] = int(hval)
     
     def print_stats(self):
         """Print cache statistics."""
@@ -135,11 +176,19 @@ class HeuristicCache:
             print(f"\nDelta Cache:")
             print(f"  Hits: {self.delta_hits}, Misses: {self.delta_misses}")
             print(f"  Hit rate: {delta_rate:.1f}%")
+
+        wdg_total = self.wdg_hits + self.wdg_misses
+        if wdg_total > 0:
+            wdg_rate = self.wdg_hits / wdg_total * 100
+            print(f"\nWDG Heuristic Cache:")
+            print(f"  Hits: {self.wdg_hits}, Misses: {self.wdg_misses}")
+            print(f"  Hit rate: {wdg_rate:.1f}%")
         
         print(f"\nTotal cache entries:")
         print(f"  MDDs: {len(self.mdd_cache)}")
         print(f"  Dependencies: {len(self.dependency_cache)}")
         print(f"  Deltas: {len(self.delta_cache)}")
+        print(f"  WDG heuristics: {len(self.wdg_cache)}")
         print(f"{'='*60}\n")
     
     def clear(self):
@@ -147,6 +196,7 @@ class HeuristicCache:
         self.mdd_cache.clear()
         self.dependency_cache.clear()
         self.delta_cache.clear()
+        self.wdg_cache.clear()
         
         self.mdd_hits = 0
         self.mdd_misses = 0
@@ -154,3 +204,5 @@ class HeuristicCache:
         self.dep_misses = 0
         self.delta_hits = 0
         self.delta_misses = 0
+        self.wdg_hits = 0
+        self.wdg_misses = 0
