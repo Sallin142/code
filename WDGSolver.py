@@ -18,18 +18,18 @@ class WDGSolver(CBSSolver):
         self.cache = HeuristicCache()
     
     def get_wdg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints, debug=False):
-        dependencies = []  # List of (agent1, agent2, weight) tuples
+        dependencies = []
         
         all_paths = []
         all_mdds = []
         
-        timeout_count = 0  # Track consecutive timeouts
-        max_timeouts = 3   # Stop trying after 3 timeouts
+        timeout_count = 0
+        max_timeouts = 3
         
         if debug:
             print(f"\n[WDG DEBUG] Starting heuristic calculation for {len(paths)} agents")
         
-        # Build MDDs for all agents (WITH CACHING!)
+        # build MDDs for all agents 
         for i in range(len(paths)):
             # Check cache first
             cached_mdd = self.cache.get_mdd(i, constraints)
@@ -39,17 +39,16 @@ class WDGSolver(CBSSolver):
                 if debug:
                     print(f"[WDG DEBUG] Agent {i}: Using cached MDD, {len(optimal_paths)} paths, cost={len(optimal_paths[0])-1}")
             else:
-                # Cache miss - compute MDD
-                # OPTIMIZATION: Limit max_paths to avoid exponential explosion
+
                 optimal_paths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints, max_paths=200)
                 if not optimal_paths:
                     if debug:
                         print(f"[WDG DEBUG] Agent {i}: No optimal paths found!")
-                    return 0  # Return 0 instead of -1
+                    return 0
                 
                 root_node, nodes_dict = buildMDDTree(optimal_paths)
                 
-                # Store in cache
+                # store in cache
                 self.cache.store_mdd(i, constraints, optimal_paths, root_node, nodes_dict)
                 
                 if debug:
@@ -58,13 +57,12 @@ class WDGSolver(CBSSolver):
             all_paths.append(optimal_paths)
             all_mdds.append((root_node, nodes_dict))
         
-        # Get collisions from CURRENT solution
         current_collisions = detect_collisions(paths)
         
         if debug:
             print(f"[WDG DEBUG] Found {len(current_collisions)} collisions in current solution")
         
-        # Build set of agent pairs that have collisions
+        # build set of agent pairs that have collisions
         collision_pairs = set()
         for collision in current_collisions:
             a1, a2 = collision['a1'], collision['a2']
@@ -72,7 +70,7 @@ class WDGSolver(CBSSolver):
                 a1, a2 = a2, a1
             collision_pairs.add((a1, a2))
         
-        # Check all pairs that have collisions
+        # check all pairs that have collisions
         for i, j in collision_pairs:
             if debug:
                 print(f"[WDG DEBUG] Checking agents {i} and {j}")
@@ -82,7 +80,7 @@ class WDGSolver(CBSSolver):
             paths_j = all_paths[j]
             root_j, nodes_dict_j = all_mdds[j]
             
-            # Check cache for dependency first
+            # check cache for dependency first
             cached_dep = self.cache.get_dependency(i, j, constraints)
             
             if cached_dep is not None:
@@ -90,7 +88,6 @@ class WDGSolver(CBSSolver):
                 if debug:
                     print(f"[WDG DEBUG] Agents {i} and {j}: Using cached dependency = {is_dependent}")
             else:
-                # Compute dependency
                 balanceMDDs(paths_i, paths_j, nodes_dict_i, nodes_dict_j)
                 is_cardinal = check_MDDs_for_conflict(nodes_dict_i, nodes_dict_j)
                 
@@ -99,7 +96,6 @@ class WDGSolver(CBSSolver):
                     if debug:
                         print(f"[WDG DEBUG] Agents {i} and {j}: CARDINAL conflict")
                 else:
-                    # Build joint MDD
                     try:
                         joint_root, joint_bottom = buildJointMDD(
                             paths_i, paths_j, 
@@ -112,7 +108,6 @@ class WDGSolver(CBSSolver):
                         if debug:
                             print(f"[WDG DEBUG] Agents {i} and {j}: Exception: {e}")
                 
-                # Store in cache
                 self.cache.store_dependency(i, j, constraints, is_dependent)
             
             if not is_dependent:
@@ -120,7 +115,6 @@ class WDGSolver(CBSSolver):
                     print(f"[WDG DEBUG] Agents {i} and {j}: INDEPENDENT")
                 continue
             
-            # Compute Δij (WITH CACHING!)
             cached_delta = self.cache.get_delta(i, j, constraints)
             
             if cached_delta is not None:
@@ -128,7 +122,6 @@ class WDGSolver(CBSSolver):
                 if debug:
                     print(f"[WDG DEBUG] Agents {i} and {j}: Using cached Δij = {weight}")
             else:
-                # Early stopping: if too many timeouts, use fallback
                 if timeout_count >= max_timeouts:
                     if debug:
                         print(f"[WDG DEBUG] Agents {i} and {j}: Too many timeouts, using Δij=1 (fast fallback)")
@@ -137,11 +130,9 @@ class WDGSolver(CBSSolver):
                     dependencies.append((i, j, weight))
                     continue
                 
-                # Compute delta
                 joint_constraints = [c for c in constraints 
                                    if c['agent'] == i or c['agent'] == j]
                 
-                # Map agent indices: i->0, j->1
                 two_agent_constraints = []
                 for c in joint_constraints:
                     new_c = copy.deepcopy(c)
@@ -158,30 +149,28 @@ class WDGSolver(CBSSolver):
                     joint_solver = CGSolver(my_map, [starts[i], starts[j]], 
                                           [goals[i], goals[j]])
                     
-                    # Use tighter timeout for 2-agent problems
                     import signal
                     
                     def timeout_handler(signum, frame):
                         raise TimeoutError("2-agent CBS timeout")
                     
-                    # Set alarm for 0.3 seconds (aggressive timeout)
                     signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(0)  # 0 = use fractional seconds
-                    signal.setitimer(signal.ITIMER_REAL, 0.3)  # 0.3 second timeout
+                    signal.alarm(0) 
+                    signal.setitimer(signal.ITIMER_REAL, 0.3)
                     
                     try:
                         joint_paths = joint_solver.find_solution(
                             disjoint=False, 
                             root_constraints=two_agent_constraints,
-                            root_h=1,  # Paper's optimization
+                            root_h=1,
                             record_results=False
                         )
-                        signal.setitimer(signal.ITIMER_REAL, 0)  # Cancel timer
+                        signal.setitimer(signal.ITIMER_REAL, 0) 
                         
                         if joint_paths is None:
                             if debug:
                                 print(f"[WDG DEBUG] Failed to find joint paths for {i},{j}")
-                            weight = 1  # Conservative fallback
+                            weight = 1
                         else:
                             joint_cost = get_sum_of_cost(joint_paths)
                             individual_cost = (len(paths[i]) - 1) + (len(paths[j]) - 1)
@@ -191,18 +180,17 @@ class WDGSolver(CBSSolver):
                                 print(f"[WDG DEBUG] Agents {i}-{j}: individual={individual_cost}, joint={joint_cost}, Δij={weight}")
                     
                     except TimeoutError:
-                        signal.setitimer(signal.ITIMER_REAL, 0)  # Cancel timer
-                        timeout_count += 1  # Track timeouts
+                        signal.setitimer(signal.ITIMER_REAL, 0)
+                        timeout_count += 1 
                         if debug:
                             print(f"[WDG DEBUG] Agents {i},{j}: Timeout ({timeout_count}/{max_timeouts}), using Δij=1")
                         weight = 1
-                
                 except Exception as e:
                     if debug:
                         print(f"[WDG DEBUG] Exception solving two-agent for {i},{j}: {e}")
                     weight = 1
                 
-                # Store in cache
+        
                 self.cache.store_delta(i, j, constraints, weight)
             
             dependencies.append((i, j, weight))
@@ -210,13 +198,11 @@ class WDGSolver(CBSSolver):
         if debug:
             print(f"[WDG DEBUG] Total dependencies: {len(dependencies)}")
         
-        # If no dependencies, h-value is 0
         if not dependencies:
             if debug:
                 print(f"[WDG DEBUG] No dependencies, returning 0")
             return 0
 
-        # Check if all weights are 1
         weights = [w for _, _, w in dependencies]
         if all(w == 1 for w in weights):
             if debug:
@@ -227,7 +213,6 @@ class WDGSolver(CBSSolver):
             vertex_cover = g.getVertexCover()
             return len(vertex_cover)
         
-        # Solve EWMVC using LP
         try:
             model = LpProblem("WDG_heuristic", LpMinimize)
             lp_agents = {}
@@ -299,7 +284,7 @@ class WDGSolver(CBSSolver):
             if not curr['collisions']:
                 if record_results:
                     self.print_results(curr)
-                    self.cache.print_stats()  # Print cache statistics
+                    self.cache.print_stats() 
                 return curr['paths']
             
             collision = curr['collisions'][0]
@@ -352,7 +337,6 @@ class WDGSolver(CBSSolver):
         return None
     
     def push_node(self, node):
-        """Push node to open list with f = g + h prioritization."""
         import heapq
         f_val = node['cost'] + node['h']
         heapq.heappush(self.open_list, (f_val, len(node['collisions']), 
@@ -361,7 +345,7 @@ class WDGSolver(CBSSolver):
         self.num_of_generated += 1
     
     def _is_conflicting_constraint(self, constraint, existing_constraints):
-        """Check if a new constraint conflicts with existing constraints."""
+
         if constraint in existing_constraints:
             return True
         
@@ -413,7 +397,6 @@ class WDGSolver(CBSSolver):
         return False
     
     def standard_splitting(self, collision):
-        """Create standard negative constraints for a collision."""
         constraints = []
         if len(collision['loc']) == 1:
             constraints.append({
