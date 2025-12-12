@@ -107,46 +107,6 @@ class WDGSolver(CBSSolver):
             if agent2 not in lp_agents:
                 lp_agents[agent2] = LpVariable(f"agent{agent2}_weight", lowBound=0, cat="Integer")
 
-            # # Compute joint paths for agents
-            # joint_paths = CGSolver(my_map, [starts[agent1], starts[agent2]], [goals[agent1], goals[agent2]]).find_solution(False)
-            # if joint_paths is None:
-            #     return -1
-
-            # joint_cost = get_sum_of_cost(joint_paths)
-            # individual_cost = len(all_paths[agent1][0]) + len(all_paths[agent2][0])
-            # weight = individual_cost - joint_cost
-
-            # # Constraint for edge weight
-            # model += lp_agents[agent1] + lp_agents[agent2] >= weight
-            # Filter constraints relevant to the pair
-
-
-
-
-            # pair_constraints = [c for c in constraints if c["agent"] in (agent1, agent2)]
-
-            # # Solve joint problem for the two agents
-            # joint_solver = CGSolver(my_map,
-            #                         [starts[agent1], starts[agent2]],
-            #                         [goals[agent1], goals[agent2]])
-
-            # joint_paths = joint_solver.find_solution(disjoint=True,
-            #                                         root_constraints=pair_constraints,
-            #                                         record_results=False)
-
-            # # If infeasible → upper bound heuristic = len(paths)
-            # if joint_paths is None:
-            #     weight = 1  # safe minimal positive dependency
-            # else:
-            #     joint_cost = get_sum_of_cost(joint_paths)
-            #     individual_cost = get_sum_of_cost([all_paths[agent1][0],
-            #                                     all_paths[agent2][0]])
-            #     weight = max(0, individual_cost - joint_cost)
-
-            # # Add LP constraint for this dependent pair
-            # model += lp_agents[agent1] + lp_agents[agent2] >= weight
-
-
             delta = self.cache.get_pair_weight(agent1, agent2, constraints)
 
             if delta is None:
@@ -167,17 +127,9 @@ class WDGSolver(CBSSolver):
             
             model += lp_agents[agent1] + lp_agents[agent2] >= delta
 
-
-
-
         # Minimize sum of agent weights
         model += sum(lp_agents.values())
         model.solve(pl.PULP_CBC_CMD(msg=False))
-
-        # return value(model.objective)
-
-        # obj = value(model.objective)
-        # return int(obj) if obj is not None else len(paths)
 
         hval = int(value(model.objective))
         self.cache.store_wdg(constraints, hval)
