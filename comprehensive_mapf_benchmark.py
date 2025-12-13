@@ -29,8 +29,8 @@ class ComprehensiveBenchmark:
         self.benchmark_dir = benchmark_dir
         self.repeat_count = repeat_count
         self.results = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # Store lists for multiple runs
-        self.solvers = ['CG', 'DG', 'WDG', 'CBS Standard', 'CBS Disjoint']
-        self.colors = ['#3498db', '#9b59b6','#f1c40f', '#e74c3c', '#2ecc71']  # Blue, Purple, Yellow, Red, Green
+        self.solvers = ['CG', 'DG', 'WDG']
+        self.colors = ['#3498db', '#9b59b6','#f1c40f']  # Blue, Purple, Yellow
         
     def load_instance(self, filename):
         """Load a MAPF instance from file"""
@@ -78,28 +78,6 @@ class ComprehensiveBenchmark:
                         raise e
                 expanded_nodes = getattr(solver, 'num_of_expanded', 0)
                 generated_nodes = getattr(solver, 'num_of_generated' , 0)
-            elif solver_name == 'CBS Standard':
-                solver = CBSSolver(my_map, starts, goals)
-                try:
-                    paths = solver.find_solution(disjoint=False)
-                except BaseException as e:
-                    if 'No solutions' in str(e):
-                        paths = None
-                    else:
-                        raise e
-                expanded_nodes = getattr(solver, 'num_of_expanded', 0)
-                generated_nodes = getattr(solver, 'num_of_generated', 0)
-            elif solver_name == 'CBS Disjoint':
-                solver = CBSSolver(my_map, starts, goals)
-                try:
-                    paths = solver.find_solution(disjoint=True)
-                except BaseException as e:
-                    if 'No solutions' in str(e):
-                        paths = None
-                    else:
-                        raise e
-                expanded_nodes = getattr(solver, 'num_of_expanded', 0)
-                generated_nodes = getattr(solver, 'num_of_generated', 0)
             else:
                 raise ValueError(f"Unknown solver: {solver_name}")
             
@@ -147,7 +125,7 @@ class ComprehensiveBenchmark:
         """Discover all test files in benchmark directory"""
         test_files = {}
         
-        for agent_dir in ['max_agents_2','max_agents_10']:
+        for agent_dir in ['max_agents_2','max_agents_10', 'max_agents_15plus']:
             agent_path = os.path.join(self.benchmark_dir, agent_dir)
             if os.path.exists(agent_path):
                 files = []
@@ -333,92 +311,7 @@ class ComprehensiveBenchmark:
         plt.close()
         print(f"Saved {filename}")
     
-    def create_cbs_comparison_chart(self, data, agent_group):
-        """Create CBS Standard vs Disjoint expanded nodes comparison with error bars"""
-        test_names = sorted(data.keys(), key=lambda x: int(x.split('_')[1]))
-        
-        fig, ax = plt.subplots(figsize=(16, 8))
-        
-        x = np.arange(len(test_names))
-        width = 0.35
-        
-        standard_values = []
-        standard_errors = []
-        disjoint_values = []
-        disjoint_errors = []
-        
-        for test in test_names:
-            # CBS Standard statistics
-            if 'CBS Standard' in data[test] and data[test]['CBS Standard']:
-                std_stats = self.calculate_statistics(data[test]['CBS Standard'], 'expanded_nodes')
-                standard_values.append(std_stats['mean'])
-                standard_errors.append(std_stats['std'])
-            else:
-                standard_values.append(0)
-                standard_errors.append(0)
-            
-            # CBS Disjoint statistics
-            if 'CBS Disjoint' in data[test] and data[test]['CBS Disjoint']:
-                dis_stats = self.calculate_statistics(data[test]['CBS Disjoint'], 'expanded_nodes')
-                disjoint_values.append(dis_stats['mean'])
-                disjoint_errors.append(dis_stats['std'])
-            else:
-                disjoint_values.append(0)
-                disjoint_errors.append(0)
-        
-        bars1 = ax.bar(x - width/2, standard_values, width, 
-                      yerr=standard_errors if self.repeat_count > 1 else None,
-                      label='CBS Standard', color='#e74c3c', alpha=0.8, 
-                      capsize=5 if self.repeat_count > 1 else 0, 
-                      error_kw={'linewidth': 1, 'alpha': 0.7} if self.repeat_count > 1 else {})
-        bars2 = ax.bar(x + width/2, disjoint_values, width, 
-                      yerr=disjoint_errors if self.repeat_count > 1 else None,
-                      label='CBS Disjoint', color='#2ecc71', alpha=0.8,
-                      capsize=5 if self.repeat_count > 1 else 0, 
-                      error_kw={'linewidth': 1, 'alpha': 0.7} if self.repeat_count > 1 else {})
-        
-        # Add value labels
-        if len(test_names) <= 15:
-            for values, errors, bars in [(standard_values, standard_errors, bars1), 
-                                       (disjoint_values, disjoint_errors, bars2)]:
-                for bar, value, error in zip(bars, values, errors):
-                    if value > 0:
-                        height = bar.get_height()
-                        if self.repeat_count > 1 and error > 0.1:
-                            label_text = f'{value:.0f}±{error:.0f}'
-                        else:
-                            label_text = f'{value:.0f}'
-                        y_offset = error if self.repeat_count > 1 else 0
-                        ax.text(bar.get_x() + bar.get_width()/2., height + y_offset,
-                               label_text, ha='center', va='bottom', fontsize=7)
-        
-        ax.set_xlabel('Test Instance')
-        ax.set_ylabel('Expanded Nodes')
-        
-        title = f'CBS Standard vs Disjoint: Expanded Nodes Comparison - {agent_group.replace("max_agents_", "").replace("_", " ")} Agents'
-        if self.repeat_count > 1:
-            title += f' (Averaged over {self.repeat_count} runs)'
-        ax.set_title(title)
-        
-        ax.set_xticks(x)
-        ax.set_xticklabels(test_names, rotation=45, ha='right')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        
-        # Use log scale if values are large
-        if standard_values or disjoint_values:
-            combined_values = standard_values + disjoint_values
-            if combined_values:
-                max_value = max(combined_values)
-                if max_value > 100:
-                    ax.set_yscale('log')
-        
-        plt.tight_layout()
-        filename = f'cbs_comparison_{agent_group.lower()}.png'
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"Saved {filename}")
-    
+
     def generate_all_graphs(self):
         """Generate all performance comparison graphs"""
         print("\n" + "=" * 80)
@@ -441,9 +334,6 @@ class ComprehensiveBenchmark:
             for metric, ylabel, log_scale in metrics:
                 filename = f'{metric.lower().replace(" ", "_")}_{agent_group.lower()}.png'
                 self.create_grouped_bar_chart(data, metric, ylabel, filename, agent_group, log_scale)
-            
-            # Generate CBS comparison graph
-            self.create_cbs_comparison_chart(data, agent_group)
     
     def save_results_csv(self):
         """Save detailed results to CSV files with statistical summaries"""
@@ -605,7 +495,6 @@ def main():
     print("- Success rate charts (per agent group)")
     print("- Expanded nodes charts (per agent group)" + (" with error bars" if args.repeat > 1 else ""))
     print("- Generated nodes charts (per agent group)" + (" with error bars" if args.repeat > 1 else ""))
-    print("- CBS Standard vs Disjoint comparison charts" + (" with error bars" if args.repeat > 1 else ""))
     print("- Detailed CSV results files with statistical summaries")
     print("=" * 80)
 
