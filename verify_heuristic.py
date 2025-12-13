@@ -1,5 +1,5 @@
 
-#!/usr/bin/env python3
+
 """
 Verify that CG/DG/WDG heuristics are admissible and informative.
 """
@@ -42,7 +42,7 @@ def verify_heuristic(filename):
     my_map, starts, goals = import_mapf_instance(filename)
     cbs_solver = CBSSolver(my_map, starts, goals)
     
-    # Get initial paths
+    
     paths = []
     heuristics = []
     for i in range(len(starts)):
@@ -59,18 +59,18 @@ def verify_heuristic(filename):
     print(f"Agents: {len(starts)}")
     print(f"Collisions at root: {len(collisions)}")
     
-    # Compute h-values
+    
     print("\nComputing h-values...")
     
-    # CG
+    
     cg_solver = CGSolver(my_map, starts, goals)
     cg_h = cg_solver.get_cg_heuristic(my_map, paths, starts, goals, heuristics, [])
     
-    # DG
+    
     dg_solver = DGSolver(my_map, starts, goals)
     dg_h = dg_solver.get_dg_heuristic(my_map, paths, starts, goals, heuristics, [])
     
-    # WDG
+    
     wdg_solver = WDGSolver(my_map, starts, goals)
     wdg_h = wdg_solver.get_wdg_heuristic(my_map, paths, starts, goals, heuristics, [])
     
@@ -79,7 +79,7 @@ def verify_heuristic(filename):
     print(f"  DG:  {dg_h}")
     print(f"  WDG: {wdg_h}")
     
-    # Verify admissibility (should be: WDG >= DG >= CG >= 0)
+    
     print("\n" + "="*70)
     print("ADMISSIBILITY CHECK")
     print("="*70)
@@ -105,7 +105,7 @@ def verify_heuristic(filename):
     else:
         print(f"✓ WDG h-value ({wdg_h}) >= DG h-value ({dg_h})")
     
-    # Check if h-values are informative
+    
     print("\n" + "="*70)
     print("INFORMATIVENESS CHECK")
     print("="*70)
@@ -123,7 +123,7 @@ def verify_heuristic(filename):
         else:
             print(f"✓ DG h-value > 0 with {len(collisions)} collisions")
     
-    # Estimate search tree size
+    
     print("\n" + "="*70)
     print("EXPECTED SEARCH PERFORMANCE")
     print("="*70)

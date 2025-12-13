@@ -1,4 +1,4 @@
-#!/usr/bin/python
+
 """
 Comprehensive MAPF Solver Benchmarking and Visualization Script
 Runs CBS CG, CBS Standard, and CBS Disjoint on benchmark instances
@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from collections import defaultdict
 
-# Import MAPF solvers
+
 from cbs import CBSSolver
 from CGSolver import CGSolver
 from DGSolver import DGSolver
@@ -28,18 +28,12 @@ class ComprehensiveBenchmark:
     def __init__(self, benchmark_dir='Benchmarks', repeat_count=1):
         self.benchmark_dir = benchmark_dir
         self.repeat_count = repeat_count
-        self.results = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # Store lists for multiple runs
+        self.results = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  
         self.solvers = ['CG', 'DG', 'WDG']
-        self.colors = ['#3498db', '#9b59b6','#f1c40f']  # Blue, Purple, Yellow
+        self.colors = ['#3498db', '#9b59b6','#f1c40f']  
         
-    def load_instance(self, filename):
-        """Load a MAPF instance from file"""
-        try:
-            return import_mapf_instance(filename)
-        except Exception as e:
-            print(f"Error loading {filename}: {e}")
-            return None, None, None
-    
+        
+
     def run_solver(self, solver_name, my_map, starts, goals, timeout=30000000000):
         """Run a specific solver and return performance metrics"""
         try:
@@ -84,7 +78,7 @@ class ComprehensiveBenchmark:
             end_time = time.time()
             runtime = end_time - start_time
             
-            # Check for timeout
+            
             if runtime > timeout:
                 return {
                     'cost': -1,
@@ -121,33 +115,18 @@ class ComprehensiveBenchmark:
                 'generated_nodes': 0
             }
     
-    def discover_test_files(self):
-        """Discover all test files in benchmark directory"""
-        test_files = {}
-        
-        for agent_dir in ['max_agents_2','max_agents_10', 'max_agents_15plus']:
-            agent_path = os.path.join(self.benchmark_dir, agent_dir)
-            if os.path.exists(agent_path):
-                files = []
-                for i in range(50):  # test_0 to test_24
-                    test_file = os.path.join(agent_path, f'test_{i}.txt')
-                    if os.path.exists(test_file):
-                        files.append(test_file)
-                test_files[agent_dir] = sorted(files)
-        
-        return test_files
-    
+
     def calculate_statistics(self, results_list, metric):
         """Calculate statistics for a list of results"""
         if not results_list:
             return {'mean': 0, 'std': 0, 'min': 0, 'max': 0, 'count': 0, 'success_rate': 0}
         
-        # Filter successful results for most metrics
+        
         if metric == 'success_rate':
             successes = sum(1 for r in results_list if r['success'])
             return {
                 'mean': successes / len(results_list) * 100,
-                'std': 0,  # Success rate doesn't have std in the same way
+                'std': 0,  
                 'min': 0 if successes == 0 else 100 if successes == len(results_list) else 50,
                 'max': 100 if successes > 0 else 0,
                 'count': len(results_list),
@@ -177,7 +156,16 @@ class ComprehensiveBenchmark:
             print(f"Running {self.repeat_count} iterations per test for statistical analysis")
         print("=" * 80)
         
-        test_files = self.discover_test_files()
+        test_files = {}
+        for agent_dir in ['max_agents_2','max_agents_10', 'max_agents_15plus']:
+            agent_path = os.path.join(self.benchmark_dir, agent_dir)
+            if os.path.exists(agent_path):
+                files = []
+                for i in range(50):
+                    test_file = os.path.join(agent_path, f'test_{i}.txt')
+                    if os.path.exists(test_file):
+                        files.append(test_file)
+                test_files[agent_dir] = sorted(files)
         
         for agent_group, files in test_files.items():
             print(f"\nProcessing {agent_group} ({len(files)} files)...")
@@ -186,12 +174,17 @@ class ComprehensiveBenchmark:
                 test_name = os.path.basename(test_file).replace('.txt', '')
                 print(f"\n[{i+1}/{len(files)}] Running {test_name}...")
                 
-                # Load instance
-                my_map, starts, goals = self.load_instance(test_file)
+                
+                
+                try:
+                    my_map, starts, goals = import_mapf_instance(test_file)
+                except Exception as e:
+                    print(f"Error loading {test_file}: {e}")
+                    my_map, starts, goals = None, None, None
                 if my_map is None:
                     continue
                 
-                # Run each solver multiple times
+                
                 for solver_name in self.solvers:
                     if self.repeat_count > 1:
                         print(f"  {solver_name} ({self.repeat_count} runs)...", end=' ')
@@ -213,7 +206,7 @@ class ComprehensiveBenchmark:
                                 costs.append(result['cost'])
                                 runtimes.append(result['runtime'])
                     
-                    # Print summary for this solver
+                    
                     if self.repeat_count > 1:
                         if successes > 0:
                             avg_cost = statistics.mean(costs) if costs else 0
@@ -222,7 +215,7 @@ class ComprehensiveBenchmark:
                         else:
                             print(f"✗ 0/{self.repeat_count} success")
                     else:
-                        # Single run - show individual result
+                        
                         if self.results[agent_group][test_name][solver_name]:
                             result = self.results[agent_group][test_name][solver_name][0]
                             status = "✓" if result['success'] else "✗"
@@ -242,7 +235,7 @@ class ComprehensiveBenchmark:
         x = np.arange(len(test_names))
         width = 0.25
         
-        # Determine metric name for statistics calculation
+        
         if ylabel == 'Success Rate':
             metric = 'success_rate'
         elif 'cost' in ylabel.lower():
@@ -274,7 +267,7 @@ class ComprehensiveBenchmark:
                          capsize=5 if self.repeat_count > 1 else 0, 
                          error_kw={'linewidth': 1, 'alpha': 0.7} if self.repeat_count > 1 else {})
             
-            # Add value labels on bars for smaller datasets
+            
             if len(test_names) <= 15:
                 for j, (bar, value, error) in enumerate(zip(bars, values, errors)):
                     if value > 0:
@@ -301,7 +294,7 @@ class ComprehensiveBenchmark:
         ax.grid(True, alpha=0.3)
         
         if log_scale:
-            # Only use log scale if we have values > 1
+            
             max_value = max(max(values) if values else 0, 1)
             if max_value > 10:
                 ax.set_yscale('log')
@@ -330,7 +323,7 @@ class ComprehensiveBenchmark:
             print(f"\nGenerating graphs for {agent_group}...")
             data = self.results[agent_group]
             
-            # Generate individual metric graphs
+            
             for metric, ylabel, log_scale in metrics:
                 filename = f'{metric.lower().replace(" ", "_")}_{agent_group.lower()}.png'
                 self.create_grouped_bar_chart(data, metric, ylabel, filename, agent_group, log_scale)
@@ -340,7 +333,7 @@ class ComprehensiveBenchmark:
         print("\nSaving results to CSV files...")
         
         for agent_group, data in self.results.items():
-            # Save individual run data
+            
             if self.repeat_count > 1:
                 filename = f'benchmark_results_raw_{agent_group.lower()}.csv'
                 with open(filename, 'w', newline='') as csvfile:
@@ -365,7 +358,7 @@ class ComprehensiveBenchmark:
                                     })
                 print(f"Saved {filename}")
             
-            # Save statistical summary
+            
             filename = f'benchmark_results_summary_{agent_group.lower()}.csv'
             with open(filename, 'w', newline='') as csvfile:
                 fieldnames = ['test_name', 'solver', 'success_rate', 'total_runs',
@@ -425,7 +418,7 @@ class ComprehensiveBenchmark:
             total_tests = len(data)
             
             for solver in self.solvers:
-                # Collect all results for this solver across all tests
+                
                 all_solver_results = []
                 tests_with_results = 0
                 
@@ -435,7 +428,7 @@ class ComprehensiveBenchmark:
                         all_solver_results.extend(test_data[solver])
                 
                 if all_solver_results:
-                    # Calculate statistics using the results lists
+                    
                     cost_stats = self.calculate_statistics(all_solver_results, 'cost')
                     runtime_stats = self.calculate_statistics(all_solver_results, 'runtime')
                     expanded_stats = self.calculate_statistics(all_solver_results, 'expanded_nodes')
@@ -470,19 +463,19 @@ def main():
         print("Error: --repeat must be at least 1")
         return
     
-    # Create benchmark instance
+    
     benchmark = ComprehensiveBenchmark(benchmark_dir=args.benchmark_dir, repeat_count=args.repeat)
     
-    # Run all benchmarks
+    
     benchmark.run_all_benchmarks()
     
-    # Generate graphs
+    
     benchmark.generate_all_graphs()
     
-    # Save CSV results
+    
     benchmark.save_results_csv()
     
-    # Print summary
+    
     benchmark.print_summary_statistics()
     
     print("\n" + "=" * 80)

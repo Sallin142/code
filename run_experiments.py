@@ -1,4 +1,4 @@
-#!/usr/bin/python
+
 import argparse
 import glob
 import sys
@@ -13,12 +13,6 @@ from visualize import Animation
 from single_agent_planner import get_sum_of_cost, compute_heuristics
 
 SOLVER = "CBS"
-
-def print_mapf_instance(my_map, starts, goals):
-    print('Start locations')
-    print_locations(my_map, starts)
-    print('Goal locations')
-    print_locations(my_map, goals)
 
 
 def print_locations(my_map, locations):
@@ -43,12 +37,12 @@ def import_mapf_instance(filename):
     if not f.is_file():
         raise BaseException(filename + " does not exist.")
     f = open(filename, 'r')
-    # first line: #rows #columns
+    
     line = f.readline()
     rows, columns = [int(x) for x in line.split(' ')]
     rows = int(rows)
     columns = int(columns)
-    # #rows lines with the map
+    
     my_map = []
     for r in range(rows):
         line = f.readline()
@@ -58,10 +52,10 @@ def import_mapf_instance(filename):
                 my_map[-1].append(True)
             elif cell == '.':
                 my_map[-1].append(False)
-    # #agents
+    
     line = f.readline()
     num_agents = int(line)
-    # #agents lines with the start/goal positions
+    
     starts = []
     goals = []
     for a in range(num_agents):
@@ -92,7 +86,10 @@ if __name__ == '__main__':
 
         print("***Import an instance***")
         my_map, starts, goals = import_mapf_instance(file)
-        print_mapf_instance(my_map, starts, goals)
+        print('Start locations')
+        print_locations(my_map, starts)
+        print('Goal locations')
+        print_locations(my_map, goals)
 
         if args.solver == "CBS":
             print("***Run CBS***")
@@ -126,5 +123,5 @@ if __name__ == '__main__':
         if not args.batch:
             print("***Test paths on a simulation***")
             animation = Animation(my_map, starts, goals, paths)
-            # animation.save("output.mp4", 1.0)
+            
             animation.show()

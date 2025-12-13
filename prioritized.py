@@ -18,7 +18,7 @@ class PrioritizedPlanningSolver(object):
 
         self.CPU_time = 0
 
-        # compute heuristics for the low-level search
+        
         self.heuristics = []
         for goal in self.goals:
             self.heuristics.append(compute_heuristics(my_map, goal))
@@ -33,17 +33,17 @@ class PrioritizedPlanningSolver(object):
         result = []
 
         constraints = [
-            # {'agent': 0,
-            #  'loc': [(1,2)],
-            #  'timestep': 3,
-            #  'positive': True},
-            # {'agent': 1,
-            #  'loc': [(1,2)],
-            #  'timestep': 3,
-            #  'positive': True},
+            
+            
+            
+            
+            
+            
+            
+            
         ]
 
-        for i in range(self.num_of_agents):  # Find path for each agent
+        for i in range(self.num_of_agents):  
             path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
                           i, constraints)
             print(path)
@@ -51,9 +51,9 @@ class PrioritizedPlanningSolver(object):
                 raise BaseException('No solutions')
             result.append(path)
 
-            # Add constraints here
+            
             for time in range(len(path)):
-                for agent in range(i+1, self.num_of_agents): # lower priority agents
+                for agent in range(i+1, self.num_of_agents): 
                     vertex_constraint = {
                         'agent': agent,
                         'loc': [path[time]],
@@ -70,8 +70,8 @@ class PrioritizedPlanningSolver(object):
                         }
                         constraints.append(edge_constraint)
 
-            # all previous agents are in the goal location and will not move. 
-            # max possible path length for next agent: #open cells - #higher priority agents in goal already
+            
+            
             for time in range(len(path), num_open_cells - (i+1)):
                 for agent in range(i+1, self.num_of_agents):
                     vertex_constraint = {

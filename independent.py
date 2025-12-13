@@ -18,7 +18,7 @@ class IndependentSolver(object):
 
         self.CPU_time = 0
 
-        # compute heuristics for the low-level search
+        
         self.heuristics = []
         for goal in self.goals:
             self.heuristics.append(compute_heuristics(my_map, goal))
@@ -29,15 +29,15 @@ class IndependentSolver(object):
         start_time = timer.time()
         result = []
 
-        for i in range(self.num_of_agents):  # Find path for each agent
+        for i in range(self.num_of_agents):  
             paths = get_all_optimal_paths(self.my_map, self.starts[i], self.goals[i], self.heuristics[i])
             print(f"All optimal paths for agent {i}: {paths}")
 
         self.CPU_time = timer.time() - start_time
 
-        # print("\n Found a solution! \n")
-        # print("CPU time (s):    {:.2f}".format(self.CPU_time))
-        # print("Sum of costs:    {}".format(get_sum_of_cost(result)))
-        # print(result)
+        
+        
+        
+        
 
         return result

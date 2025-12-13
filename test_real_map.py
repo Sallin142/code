@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 
 import sys
 from CGSolver import CGSolver
@@ -56,7 +56,7 @@ def test_solver(solver_name, my_map, starts, goals):
             print(f"  Generated nodes: {solver.num_of_generated}")
             print(f"  CPU time:        {solver.CPU_time:.3f}s")
             
-            # Get root h-value if available
+            
             root_h = None
             if hasattr(solver, 'root_h_value'):
                 root_h = solver.root_h_value
@@ -104,7 +104,7 @@ if __name__ == "__main__":
             print("COMPARISON")
             print(f"{'='*60}")
             
-            # Print header
+            
             header_parts = ['Solver', 'Expanded', 'Generated', 'Time (s)']
             if any(r.get('root_h') is not None for r in results.values()):
                 header_parts.append('Root h')
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             print()
             print("-" * (60 + (12 if len(header_parts) > 4 else 0)))
             
-            # Print results
+            
             for solver_name in ['CBS', 'CG', 'DG', 'WDG']:
                 if solver_name in results:
                     r = results[solver_name]
@@ -126,7 +126,7 @@ if __name__ == "__main__":
                         print(f" {'N/A':<10}", end='')
                     print()
 
-            # Calculate improvements
+            
             print(f"\n{'='*60}")
             print("IMPROVEMENTS")
             print(f"{'='*60}")

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 from matplotlib.patches import Circle, Rectangle
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,13 +28,13 @@ class Animation:
         self.fig = plt.figure(frameon=False, figsize=(4 * aspect, 4))
         self.ax = self.fig.add_subplot(111, aspect='equal')
         self.fig.subplots_adjust(left=0, right=1, bottom=0, top=1, wspace=None, hspace=None)
-        # self.ax.set_frame_on(False)
+        
 
         self.patches = []
         self.artists = []
         self.agents = dict()
         self.agent_names = dict()
-        # create boundary patch
+        
 
         x_min = -0.5
         y_min = -0.5
@@ -49,9 +49,9 @@ class Animation:
                 if self.my_map[i][j]:
                     self.patches.append(Rectangle((i - 0.5, j - 0.5), 1, 1, facecolor='gray', edgecolor='gray'))
 
-        # create agents:
+        
         self.T = 0
-        # draw goals first
+        
         for i, goal in enumerate(self.goals):
             self.patches.append(Rectangle((goal[0] - 0.25, goal[1] - 0.25), 0.5, 0.5, facecolor=Colors[i % len(Colors)],
                                           edgecolor='black', alpha=0.5))
@@ -73,13 +73,6 @@ class Animation:
                                                  interval=100,
                                                  blit=True)
 
-    def save(self, file_name, speed):
-        self.animation.save(
-            file_name,
-            fps=10 * speed,
-            dpi=200,
-            savefig_kwargs={"pad_inches": 0, "bbox_inches": "tight"})
-
     @staticmethod
     def show():
         plt.show()
@@ -97,11 +90,11 @@ class Animation:
             self.agents[k].center = (pos[0], pos[1])
             self.agent_names[k].set_position((pos[0], pos[1] + 0.5))
 
-        # reset all colors
+        
         for _, agent in self.agents.items():
             agent.set_facecolor(agent.original_face_color)
 
-        # check drive-drive collisions
+        
         agents_array = [agent for _, agent in self.agents.items()]
         for i in range(0, len(agents_array)):
             for j in range(i + 1, len(agents_array)):
