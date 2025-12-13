@@ -1,9 +1,16 @@
 import time as timer
-from mdd import buildMDDTree, get_all_optimal_paths, check_MDDs_for_conflict, balanceMDDs
 from collections import defaultdict
-from single_agent_planner import a_star, get_sum_of_cost
-from cbs import CBSSolver
+from itertools import combinations
 import copy
+
+from cbs import CBSSolver
+from mdd import (
+    buildMDDTree,
+    get_all_optimal_paths,
+    check_MDDs_for_conflict,
+    balanceMDDs,
+)
+from single_agent_planner import a_star, get_sum_of_cost
 
 class CGSolver(CBSSolver):
     def get_cg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints, all_paths=None, all_mdds=None):
@@ -12,57 +19,70 @@ class CGSolver(CBSSolver):
         if all_mdds is None:
             all_mdds = []
 
+        num_agents = len(paths)
         agent_pair_conflicts = []
 
-        
-        
-        
-        
+        def build_agent_data():
+            if len(all_paths) == 0 and len(all_mdds) == 0:
+                for agent_idx in range(num_agents):
+                    optimal_paths = get_all_optimal_paths(
+                        my_map,
+                        starts[agent_idx],
+                        goals[agent_idx],
+                        low_level_h[agent_idx],
+                        agent_idx,
+                        constraints,
+                    )
+                    if optimal_paths == []:
+                        return -1
+                    _, nodes_dict = buildMDDTree(optimal_paths)
+                    all_paths.append(optimal_paths)
+                    all_mdds.append(nodes_dict)
+            agent_info = []
+            for agent_idx in range(num_agents):
+                agent_info.append(
+                    {
+                        "idx": agent_idx,
+                        "paths": all_paths[agent_idx],
+                        "nodes": all_mdds[agent_idx],
+                    }
+                )
+            return agent_info
 
-        if (len(all_paths) == 0 and len(all_mdds) == 0):
-            for agent_idx in range(len(paths)):
-                optimal_paths = get_all_optimal_paths(my_map, starts[agent_idx], goals[agent_idx], low_level_h[agent_idx], agent_idx, constraints)
-                if (optimal_paths == []):
-                    return -1
-                _, nodes_dict = buildMDDTree(optimal_paths)
-                all_paths.append(optimal_paths)
-                all_mdds.append(nodes_dict)
+        agent_info = build_agent_data()
+        if agent_info == -1:
+            return -1
 
-        for first_idx in range(len(paths)): 
-            first_agent_paths = all_paths[first_idx]
-            first_mdd_nodes = all_mdds[first_idx]
+        for first_info, second_info in combinations(agent_info, 2):
+            first_paths = first_info["paths"]
+            second_paths = second_info["paths"]
+            first_nodes = first_info["nodes"]
+            second_nodes = second_info["nodes"]
+            balanceMDDs(first_paths, second_paths, first_nodes, second_nodes)
 
-            for second_idx in range(first_idx+1,len(paths)):
+            if not check_MDDs_for_conflict(first_nodes, second_nodes):
+                continue
+            agent_pair_conflicts.append((first_info["idx"], second_info["idx"]))
 
-                second_agent_paths = all_paths[second_idx] 
-                second_mdd_nodes = all_mdds[second_idx] 
-                balanceMDDs(first_agent_paths, second_agent_paths, first_mdd_nodes, second_mdd_nodes)
-                
-                if (check_MDDs_for_conflict(first_mdd_nodes, second_mdd_nodes)):
-                    agent_pair_conflicts.append((first_idx,second_idx))
-        
-        
-        # Build graph and compute vertex cover inline
         conflict_graph = defaultdict(list)
-        for agent_pair in agent_pair_conflicts:
-            conflict_graph[agent_pair[0]].append(agent_pair[1])
-        
-        # Compute vertex cover
-        is_in_cover = [False] * len(paths)
-        for first_agent in range(len(paths)):
-            if not is_in_cover[first_agent]:
-                for second_agent in conflict_graph[first_agent]:
-                    if not is_in_cover[second_agent]:
-                        is_in_cover[second_agent] = True
-                        is_in_cover[first_agent] = True
-                        break
-        
-        vertex_cover_set = []
-        for agent_idx in range(len(paths)):
-            if is_in_cover[agent_idx]:
-                vertex_cover_set.append(agent_idx)
-        
-        return len(vertex_cover_set) 
+        for first_idx, second_idx in agent_pair_conflicts:
+            conflict_graph[first_idx].append(second_idx)
+
+        is_in_cover = [False] * num_agents
+        for first_agent in range(num_agents):
+            if is_in_cover[first_agent]:
+                continue
+            for second_agent in conflict_graph[first_agent]:
+                if is_in_cover[second_agent]:
+                    continue
+                is_in_cover[second_agent] = True
+                is_in_cover[first_agent] = True
+                break
+
+        vertex_cover_set = [
+            agent_idx for agent_idx in range(num_agents) if is_in_cover[agent_idx]
+        ]
+        return len(vertex_cover_set)
 
     def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results = True):
         """ Finds paths for all agents from their start locations to their goal locations
@@ -71,25 +91,39 @@ class CGSolver(CBSSolver):
         """
 
         self.start_time = timer.time()
-
-        initial_node = {'cost': 0,
-                'h': root_h,
-                'constraints': root_constraints,
-                'paths': [],
-                'collisions': []}
-        for agent_idx in range(self.num_of_agents):  
-            initial_path = a_star(self.my_map, self.starts[agent_idx], self.goals[agent_idx], self.heuristics[agent_idx],
-                          agent_idx, initial_node['constraints'])
+        base_constraints = root_constraints
+        base_paths = []
+        for agent_idx in range(self.num_of_agents):
+            initial_path = a_star(
+                self.my_map,
+                self.starts[agent_idx],
+                self.goals[agent_idx],
+                self.heuristics[agent_idx],
+                agent_idx,
+                base_constraints,
+            )
             if initial_path is None:
                 raise BaseException('No solutions')
-            initial_node['paths'].append(initial_path)
+            base_paths.append(initial_path)
 
-        initial_node['cost'] = get_sum_of_cost(initial_node['paths'])
-        initial_node['h'] = self.get_cg_heuristic(self.my_map, initial_node['paths'], self.starts, self.goals, self.heuristics, initial_node['constraints'])
+        initial_node = {
+            'constraints': base_constraints,
+            'paths': base_paths,
+            'collisions': [],
+            'cost': get_sum_of_cost(base_paths),
+            'h': self.get_cg_heuristic(
+                self.my_map,
+                base_paths,
+                self.starts,
+                self.goals,
+                self.heuristics,
+                base_constraints,
+            ),
+        }
         initial_node['collisions'] = super().detect_collisions(initial_node['paths'])
         self.push_node(initial_node)
 
-        while len(self.open_list) > 0:
+        while self.open_list:
             current_node = self.pop_node()
 
             if not current_node['collisions']:
@@ -99,41 +133,61 @@ class CGSolver(CBSSolver):
                 return current_node['paths'] 
             
             first_collision = current_node['collisions'][0]
-            
             generated_constraints = super().disjoint_splitting(first_collision)
             for new_constraint in generated_constraints:
                 if super().is_conflicting_constraint(new_constraint, current_node['constraints']):
                     continue
-                child_node = {}
-                child_node['constraints'] = copy.deepcopy(current_node['constraints'])
+                child_node = {
+                    'constraints': copy.deepcopy(current_node['constraints']),
+                    'paths': copy.deepcopy(current_node['paths']),
+                }
                 if new_constraint not in child_node['constraints']:
                     child_node['constraints'].append(new_constraint)
-                child_node['paths']= copy.deepcopy(current_node['paths'])
 
                 should_prune = False
                 if new_constraint['positive']:
                     affected_agents = super().paths_violate_constraint(new_constraint, child_node['paths'])
                     for affected_idx in affected_agents:
-                        updated_path = a_star(self.my_map, self.starts[affected_idx], self.goals[affected_idx], self.heuristics[affected_idx],
-                            affected_idx, child_node['constraints'])
+                        updated_path = a_star(
+                            self.my_map,
+                            self.starts[affected_idx],
+                            self.goals[affected_idx],
+                            self.heuristics[affected_idx],
+                            affected_idx,
+                            child_node['constraints'],
+                        )
                         if updated_path is None:
                             should_prune = True
                             break
-                        else:
-                            child_node['paths'][affected_idx] = updated_path
+                        child_node['paths'][affected_idx] = updated_path
                 if should_prune:
                     continue
 
                 constrained_agent = new_constraint['agent']
-                replanned_path = a_star(self.my_map, self.starts[constrained_agent], self.goals[constrained_agent], self.heuristics[constrained_agent],
-                          constrained_agent, child_node['constraints'])
-                if replanned_path is not None:
-                    child_node['paths'][constrained_agent] = replanned_path
-                    child_node['collisions'] = super().detect_collisions(child_node['paths'])
-                    child_node['cost'] = get_sum_of_cost(child_node['paths'])
-                    child_node['h'] = self.get_cg_heuristic(self.my_map, child_node['paths'], self.starts, self.goals, self.heuristics, child_node['constraints'])
+                replanned_path = a_star(
+                    self.my_map,
+                    self.starts[constrained_agent],
+                    self.goals[constrained_agent],
+                    self.heuristics[constrained_agent],
+                    constrained_agent,
+                    child_node['constraints'],
+                )
+                if replanned_path is None:
+                    continue
 
-                    self.push_node(child_node)
+                child_node['paths'][constrained_agent] = replanned_path
+                child_node['collisions'] = super().detect_collisions(child_node['paths'])
+                child_node['cost'] = get_sum_of_cost(child_node['paths'])
+                child_node['h'] = self.get_cg_heuristic(
+                    self.my_map,
+                    child_node['paths'],
+                    self.starts,
+                    self.goals,
+                    self.heuristics,
+                    child_node['constraints'],
+                )
+
+                self.push_node(child_node)
 
         if(record_results):
             self.print_results(initial_node)

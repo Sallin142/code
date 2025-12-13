@@ -237,17 +237,6 @@ class JointMDDNode():
             self.parent.append(parent)
         if (self not in parent.children):
             parent.children.append(self)
-
-def displayLayer(node, level):
-    
-    
-    
-    
-    if(len(node.children) == 0):
-        return
-    else:
-        for child in node.children:
-            displayLayer(child, level+1)
    
 def buildMDDTree(optimal_paths):
     root_location = optimal_paths[0][0]
