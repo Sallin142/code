@@ -1,6 +1,6 @@
 import time as timer
 from single_agent_planner import compute_heuristics, a_star, get_sum_of_cost
-
+from mdd import get_all_optimal_paths
 
 class IndependentSolver(object):
     """A planner that plans for each robot independently."""
@@ -30,16 +30,14 @@ class IndependentSolver(object):
         result = []
 
         for i in range(self.num_of_agents):  # Find path for each agent
-            path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
-                          i, [])
-            if path is None:
-                raise BaseException('No solutions')
-            result.append(path)
+            paths = get_all_optimal_paths(self.my_map, self.starts[i], self.goals[i], self.heuristics[i])
+            print(f"All optimal paths for agent {i}: {paths}")
 
         self.CPU_time = timer.time() - start_time
 
-        print("\n Found a solution! \n")
-        print("CPU time (s):    {:.2f}".format(self.CPU_time))
-        print("Sum of costs:    {}".format(get_sum_of_cost(result)))
+        # print("\n Found a solution! \n")
+        # print("CPU time (s):    {:.2f}".format(self.CPU_time))
+        # print("Sum of costs:    {}".format(get_sum_of_cost(result)))
+        # print(result)
 
         return result

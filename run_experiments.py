@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import argparse
 import glob
+import sys
 from pathlib import Path
 from cbs import CBSSolver
 from CGSolver import CGSolver
@@ -9,7 +10,7 @@ from WDGSolver import WDGSolver
 from independent import IndependentSolver
 from prioritized import PrioritizedPlanningSolver
 from visualize import Animation
-from single_agent_planner import get_sum_of_cost
+from single_agent_planner import get_sum_of_cost, compute_heuristics
 
 SOLVER = "CBS"
 
@@ -85,9 +86,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-
-    result_file = open("results.csv", "w", buffering=1)
-
+    print("hello world")
+    
     for file in sorted(glob.glob(args.instance)):
 
         print("***Import an instance***")
@@ -98,18 +98,18 @@ if __name__ == '__main__':
             print("***Run CBS***")
             cbs = CBSSolver(my_map, starts, goals)
             paths = cbs.find_solution(args.disjoint)
-        elif args.solver == "CGS":
-            print("***Run CGS***")
-            cgs = CGSolver(my_map, starts, goals)
-            paths = cgs.find_solution(args.disjoint)
-        elif args.solver == "DGS":
-            print("***Run DGS***")
-            dgs = DGSolver(my_map, starts, goals)
-            paths = dgs.find_solution(args.disjoint)
-        elif args.solver == "WDGS":
-            print("***Run WDGS***")
-            wdgs = WDGSolver(my_map, starts, goals)
-            paths = wdgs.find_solution(args.disjoint)
+        elif args.solver == "CBS_cg":
+            print("***Run CBS_cg***")
+            cbs = CGSolver(my_map, starts, goals)
+            paths = cbs.find_solution(args.disjoint)
+        elif args.solver == "CBS_dg":
+            print("***Run CBS_dg***")
+            cbs = DGSolver(my_map, starts, goals)
+            paths = cbs.find_solution(args.disjoint)
+        elif args.solver == "CBS_wdg":
+            print("***Run CBS_wdg***")
+            cbs = WDGSolver(my_map, starts, goals)
+            paths = cbs.find_solution(args.disjoint)
         elif args.solver == "Independent":
             print("***Run Independent***")
             solver = IndependentSolver(my_map, starts, goals)
@@ -122,12 +122,9 @@ if __name__ == '__main__':
             raise RuntimeError("Unknown solver!")
 
         cost = get_sum_of_cost(paths)
-        result_file.write("{},{}\n".format(file, cost))
-
 
         if not args.batch:
             print("***Test paths on a simulation***")
             animation = Animation(my_map, starts, goals, paths)
             # animation.save("output.mp4", 1.0)
             animation.show()
-    result_file.close()

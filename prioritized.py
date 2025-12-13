@@ -18,40 +18,69 @@ class PrioritizedPlanningSolver(object):
 
         self.CPU_time = 0
 
+        # compute heuristics for the low-level search
         self.heuristics = []
         for goal in self.goals:
             self.heuristics.append(compute_heuristics(my_map, goal))
 
     def find_solution(self):
         """ Finds paths for all agents from their start locations to their goal locations."""
+        num_open_cells = 0
+        for row in self.my_map:
+            num_open_cells += len(row)-sum(row)
 
         start_time = timer.time()
         result = []
-        constraints = []
 
-        for i in range(self.num_of_agents):
-            base_distance = self.heuristics[i][self.starts[i]]
-            higher_priority_path_lengths = sum(len(result[j]) - 1 for j in range(i))
-            buffer = (len(self.my_map) + len(self.my_map[0])) * 5
-            max_timestep = base_distance + higher_priority_path_lengths + buffer
+        constraints = [
+            # {'agent': 0,
+            #  'loc': [(1,2)],
+            #  'timestep': 3,
+            #  'positive': True},
+            # {'agent': 1,
+            #  'loc': [(1,2)],
+            #  'timestep': 3,
+            #  'positive': True},
+        ]
+
+        for i in range(self.num_of_agents):  # Find path for each agent
             path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
-                          i, constraints, max_timestep)
+                          i, constraints)
+            print(path)
             if path is None:
                 raise BaseException('No solutions')
             result.append(path)
 
-            for t in range(len(path)):
-                for j in range(i + 1, self.num_of_agents):
-                    constraints.append({'agent': j, 'loc': [path[t]], 'timestep': t})
-            for t in range(len(path) - 1):
-                for j in range(i + 1, self.num_of_agents):
-                    constraints.append({'agent': j, 'loc': [path[t+1], path[t]], 'timestep': t+1})
-            goal_location = path[-1]
-            goal_timestep = len(path) - 1
-            max_horizon = len(self.my_map) * len(self.my_map[0])       
-            for t in range(goal_timestep + 1, goal_timestep + max_horizon):
-                for j in range(i + 1, self.num_of_agents):
-                    constraints.append({'agent': j, 'loc': [goal_location], 'timestep': t, 'final': True})    
+            # Add constraints here
+            for time in range(len(path)):
+                for agent in range(i+1, self.num_of_agents): # lower priority agents
+                    vertex_constraint = {
+                        'agent': agent,
+                        'loc': [path[time]],
+                        'timestep': time,
+                        'positive': False
+                    }
+                    constraints.append(vertex_constraint)
+                    if time > 0:
+                        edge_constraint = {
+                            'agent': agent,
+                            'loc': [path[time], path[time-1]],
+                            'timestep': time,
+                            'positive': False
+                        }
+                        constraints.append(edge_constraint)
+
+            # all previous agents are in the goal location and will not move. 
+            # max possible path length for next agent: #open cells - #higher priority agents in goal already
+            for time in range(len(path), num_open_cells - (i+1)):
+                for agent in range(i+1, self.num_of_agents):
+                    vertex_constraint = {
+                        'agent': agent,
+                        'loc': [path[-1]],
+                        'timestep': time,
+                        'positive': False
+                    }
+                    constraints.append(vertex_constraint)
 
         self.CPU_time = timer.time() - start_time
 

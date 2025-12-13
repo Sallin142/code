@@ -2,18 +2,22 @@ import time as timer
 from mdd import buildMDDTree, get_all_optimal_paths, check_MDDs_for_conflict, balanceMDDs
 from mvc import Graph
 from single_agent_planner import a_star, get_sum_of_cost
-from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint
+from cbs import CBSSolver
 import copy
-
 
 class CGSolver(CBSSolver):
     def get_cg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints, all_paths=None, all_mdds=None):
-        cardinal_conflicts = []
-        
         if all_paths is None:
             all_paths = []
         if all_mdds is None:
             all_mdds = []
+
+        cardinal_conflicts = []
+
+        # build mdd for every agent
+        # store reuse it later
+        # all_paths = []
+        # all_mdds = []
 
         if (len(all_paths) == 0 and len(all_mdds) == 0):
             for i in range(len(paths)):
@@ -24,7 +28,7 @@ class CGSolver(CBSSolver):
                 all_paths.append(newpaths)
                 all_mdds.append(nodes_dict)
 
-        for i in range(len(paths)):
+        for i in range(len(paths)): # num of agents in map
             paths1 = all_paths[i]
             nodes_dict1 = all_mdds[i]
 
@@ -36,6 +40,7 @@ class CGSolver(CBSSolver):
                 
                 if (check_MDDs_for_conflict(nodes_dict1, nodes_dict2)):
                     cardinal_conflicts.append((i,j))
+        # print("Cardinal conflicts found:", cardinal_conflicts)
         
         g = Graph(len(paths))
         for conflict in cardinal_conflicts:
@@ -44,6 +49,10 @@ class CGSolver(CBSSolver):
         return len(vertex_cover) 
 
     def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results = True):
+        """ Finds paths for all agents from their start locations to their goal locations
+
+        disjoint    - use disjoint splitting or not
+        """
 
         self.start_time = timer.time()
 
@@ -52,7 +61,7 @@ class CGSolver(CBSSolver):
                 'constraints': root_constraints,
                 'paths': [],
                 'collisions': []}
-        for i in range(self.num_of_agents):
+        for i in range(self.num_of_agents):  # Find initial path for each agent
             path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
                           i, root['constraints'])
             if path is None:
@@ -61,7 +70,7 @@ class CGSolver(CBSSolver):
 
         root['cost'] = get_sum_of_cost(root['paths'])
         root['h'] = self.get_cg_heuristic(self.my_map, root['paths'], self.starts, self.goals, self.heuristics, root['constraints'])
-        root['collisions'] = detect_collisions(root['paths'])
+        root['collisions'] = super().detect_collisions(root['paths'])
         self.push_node(root)
 
         while len(self.open_list) > 0:
@@ -70,60 +79,14 @@ class CGSolver(CBSSolver):
             if not curr['collisions']:
                 if(record_results):
                     self.print_results(curr)
-                return curr['paths']
+                    self.write_results()
+                return curr['paths'] # this is the goal node
             
             collision = curr['collisions'][0]
-            constraints = disjoint_splitting(collision)
+            # constraints = standard_splitting(collision)
+            constraints = super().disjoint_splitting(collision)
             for constraint in constraints:
-                is_conflicting = False
-                if constraint in curr['constraints']:
-                    is_conflicting = True
-                else:
-                    t = constraint['timestep']
-                    constraints_at_t = [c for c in curr['constraints'] if c['timestep'] == t and c['agent'] == constraint['agent']]
-                    is_new_vertex_constraint = False
-                    if len(constraint['loc']) == 1:
-                        is_new_vertex_constraint = True
-
-                    for old_constraint in constraints_at_t:
-                        if len(old_constraint['loc']) == 1:
-                            if old_constraint['positive']:
-                                if is_new_vertex_constraint and not constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'] != old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'][1] != old_constraint['loc'][0]:
-                                    is_conflicting = True
-                                    break
-                            else:
-                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'][1] == old_constraint['loc'][0]:
-                                    is_conflicting = True
-                                    break
-                        else:
-                            if old_constraint['positive']:
-                                if is_new_vertex_constraint and constraint['positive'] and constraint['loc'][0] != old_constraint['loc'][1]:
-                                    is_conflicting = True
-                                    break
-                                if is_new_vertex_constraint and not constraint['positive'] and constraint['loc'][0] == old_constraint['loc'][1]:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and constraint['positive']:
-                                    is_conflicting = True
-                                    break
-                                if not is_new_vertex_constraint and not constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                            else:
-                                if not is_new_vertex_constraint and constraint['positive'] and constraint['loc'] == old_constraint['loc']:
-                                    is_conflicting = True
-                                    break
-                
-                if is_conflicting:
+                if super().is_conflicting_constraint(constraint, curr['constraints']):
                     continue
                 child = {}
                 child['constraints'] = copy.deepcopy(curr['constraints'])
@@ -133,7 +96,7 @@ class CGSolver(CBSSolver):
 
                 prune_child = False
                 if constraint['positive']:
-                    conflicted_agents = paths_violate_constraint(constraint, child['paths'])
+                    conflicted_agents = super().paths_violate_constraint(constraint, child['paths'])
                     for i in conflicted_agents:
                         new_path = a_star(self.my_map, self.starts[i], self.goals[i], self.heuristics[i],
                             i, child['constraints'])
@@ -150,7 +113,7 @@ class CGSolver(CBSSolver):
                           agent, child['constraints'])
                 if path is not None:
                     child['paths'][agent] = path
-                    child['collisions'] = detect_collisions(child['paths'])
+                    child['collisions'] = super().detect_collisions(child['paths'])
                     child['cost'] = get_sum_of_cost(child['paths'])
                     child['h'] = self.get_cg_heuristic(self.my_map, child['paths'], self.starts, self.goals, self.heuristics, child['constraints'])
 
@@ -158,4 +121,5 @@ class CGSolver(CBSSolver):
 
         if(record_results):
             self.print_results(root)
+            self.write_results()
         return root['paths']
