@@ -17,6 +17,7 @@ class WDGSolver(CBSSolver):
         self.cache = HeuristicCache()
 
     def get_wdg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints):
+        # Using cache for identical constraint sets
         cached_h = self.cache.get_wdg(constraints)
         if cached_h is not None:
             return int(cached_h)
@@ -25,6 +26,7 @@ class WDGSolver(CBSSolver):
         all_paths = []
         all_mdds = []
         
+        # Create MDDs for the constraints
         for i in range(len(paths)):
             cached_mdd = self.cache.get_mdd(i, constraints)
             
@@ -98,7 +100,7 @@ class WDGSolver(CBSSolver):
             self.cache.store_wdg(constraints, 0)
             return 0
         
-        # Compute heuristic
+        # Implementing weighted vertex cover
         model = LpProblem("WDG_heuristic", LpMinimize)
         lp_agents = {}
         for agent1, agent2 in dependencies:
@@ -107,24 +109,19 @@ class WDGSolver(CBSSolver):
             if agent2 not in lp_agents:
                 lp_agents[agent2] = LpVariable(f"agent{agent2}_weight", lowBound=0, cat="Integer")
 
+            # Compute cost (delta)
             delta = self.cache.get_pair_weight(agent1, agent2, constraints)
-
             if delta is None:
-                # Compute cost difference via CGSolver
-                sub_cg = CGSolver(my_map, [starts[agent1], starts[agent2]],
-                                  [goals[agent1], goals[agent2]])
-                joint_paths = sub_cg.find_solution(False)
+                joint_paths = CGSolver(my_map, [starts[agent1], starts[agent2]], [goals[agent1], goals[agent2]]).find_solution(False)
 
                 if joint_paths is None:
                     delta = 1
                 else:
-                    joint_cost = get_sum_of_cost(joint_paths)
-                    cost_i = len(all_paths[agent1][0])
-                    cost_j = len(all_paths[agent2][0])
-                    delta = (cost_i + cost_j) - joint_cost
+                    delta = (len(all_paths[agent1][0]) + len(all_paths[agent2][0])) - get_sum_of_cost(joint_paths)
 
                 self.cache.store_pair_weight(agent1, agent2, constraints, delta)
             
+            # Implementing edge constraint
             model += lp_agents[agent1] + lp_agents[agent2] >= delta
 
         # Minimize sum of agent weights
