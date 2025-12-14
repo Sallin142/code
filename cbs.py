@@ -15,8 +15,6 @@ def detect_collision(path1, path2):
             return [loc1], time
         if [loc_c1, loc1] == [loc2, loc_c2]:
             return [loc2, loc_c2], time
-        
-       
     return None
 
 

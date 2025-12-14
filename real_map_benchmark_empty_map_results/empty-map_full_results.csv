@@ -1,0 +1,4 @@
+num_agents,instances,CBS_instances_solved,CBS_h_avg,CBS_time_avg,CBS_expanded_avg,CBS_generated_avg,CG_instances_solved,CG_h_avg,CG_time_avg,CG_expanded_avg,CG_generated_avg,DG_instances_solved,DG_h_avg,DG_time_avg,DG_expanded_avg,DG_generated_avg,WDG_instances_solved,WDG_h_avg,WDG_time_avg,WDG_expanded_avg,WDG_generated_avg
+5,10,10,0.0,0.0,1.6,2.2,10,0.0,0.0,1.5,2.0,10,0.2,0.0,1.6,2.2,10,0.2,0.0,1.6,2.2
+10,10,10,0.0,0.0,2.6,4.2,10,0.2,0.0,2.8,4.6,10,0.4,0.0,2.6,4.2,10,0.4,0.0,2.7,4.4
+20,4,4,0.0,0.0,6.0,11.0,4,0.5,0.0,6.0,11.0,4,1.0,0.0,6.0,11.0,4,1.0,0.0,6.0,11.0

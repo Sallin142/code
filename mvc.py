@@ -1,84 +1,117 @@
+"""
+Minimum Vertex Cover Implementation
+
+reference:  
+https://pages.cs.wisc.edu/~shuchi/courses/787-F09/scribe-notes/lec9.pdf [1] 
+https://www2.cs.sfu.ca/~hangma/pub/ijcai19.pdf [2]
+
+"""
+
 from collections import defaultdict
-import math
-from pulp import LpMaximize, LpProblem, LpStatus, lpSum, LpVariable, LpMinimize, value
+from pulp import LpProblem, LpMinimize, LpVariable, value
 
-class Graph:
- 
-    def __init__(self, vertices):
-        self.V = vertices
-        self.graph = defaultdict(list)
- 
-    def addEdge(self, u, v):
-        self.graph[u].append(v)
- 
-    def getVertexCover(self):
-        visited = [False] * (self.V)
-         
-        for u in range(self.V):
-            if not visited[u]:
-                 
-                for v in self.graph[u]:
-                    if not visited[v]:
-                        visited[v] = True
-                        visited[u] = True
-                        break
- 
-        mvc_set = []
-        for j in range(self.V):
-            if visited[j]:
-                mvc_set.append(j)
+
+class UnweightedGraph:
+    # simple graph for computing minimum vertex cover
+    # Given a graph G and any maximal matching M on G, we can find a vertex cover for G of size at most 2|M|. [1]
+    
+    def __init__(self, num_vertices):
+    
+        # initialize graph with specified number of vertices
+        self.num_vertices = num_vertices
+        self.adjacency_list = defaultdict( list)
+    
+    def add_edge(self, vertex_a, vertex_b):
         
-        return mvc_set
+        # add an undirected edge between two vertices
+        self.adjacency_list[vertex_a].append(vertex_b)
+    
+    def get_minimum_vertex_cover(self):
+        """
+        Algorithm: Maximal matching-based approximation
+        - finds a maximal matching
+        - includes both endpoints of each matched edge
+        - guarantees size ≤ 2 * optimal
+        """
+        marked = [False] * self.num_vertices
+        cover = []
+        
+        # find maximal matching
+        for u in range(self.num_vertices ):
+            if marked[u ]:
+                continue
+            
+            # try to match u with an unmarked neighbor
+            for v in self.adjacency_list[u]:
+                if not marked[v]:
+                    marked[u] =True
+                    marked[v] = True
+                    cover.append(u)
+                    cover.append(v)
+                    break
+        return cover
 
-class Vertex:
-    def __init__(self, node):
-        self.id = node
-        self.adjacent = {}
+# Vertex in a weighted graph [2]
+class WeightedGraphVertex:
+    
+    def __init__(self, vertex_id ):
 
+        self.vertex_id = vertex_id
+        self.neighbors = {}
+    
+    # add a neighbor with specified edge weight
+    def add_neighbor(self, neighbor_vertex , weight = 0):
+        self.neighbors[neighbor_vertex ] = weight
+    
+    def get_neighbors(self):
+        return self.neighbors.keys()
+    
+    def get_edge_weight(self, neighbor_vertex):
+        return self.neighbors.get( neighbor_vertex , 0)
+    
     def __str__(self):
-        return str(self.id) + ' adjacent: ' + str([x.id for x in self.adjacent])
+        neighbor_ids = [v.vertex_id for v in self.neighbors ]
+        return f"Vertex {self.vertex_id}: neighbors = {neighbor_ids}"
 
-    def add_neighbor(self, neighbor, weight=0):
-        self.adjacent[neighbor] = weight
-
-    def get_connections(self):
-        return self.adjacent.keys()  
-
-    def get_id(self):
-        return self.id
-
-    def get_weight(self, neighbor):
-        return self.adjacent[neighbor]
 
 class WeightedGraph:
-    def __init__(self, vertices):
-        self.vert_dict = {}
-        self.num_vertices = 0
-        for vertex in vertices:
-            self.add_vertex(vertex)
 
+    # weighted graph for computing weighted minimum vertex cover
+    
+    def __init__(self, initial_vertices=None):
+
+        self.vertices = {}
+        if initial_vertices:
+            for vertex_id in initial_vertices:
+                self.add_vertex( vertex_id)
+    
+    def add_vertex(self, vertex_id):
+        if vertex_id not in self.vertices:
+            self.vertices[vertex_id] = WeightedGraphVertex(vertex_id)
+    
+    def add_edge(self, vertex_a, vertex_b, weight=0):
+        # check both vertices exist
+        self.add_vertex(vertex_a)
+        self.add_vertex(vertex_b)
+        
+        # add bidirectional edge
+        v1 = self.vertices[vertex_a]
+        v2 = self.vertices[vertex_b ]
+        v1.add_neighbor(v2, weight)
+        v2.add_neighbor(v1, weight)
+    
+    def get_vertex(self, vertex_id):
+        return self.vertices.get(vertex_id )
+    
+    def get_all_vertex_ids(self):
+        return self.vertices.keys()
+    
     def __iter__(self):
-        return iter(self.vert_dict.values())
+        return iter(self.vertices.values())
+    
+    def __len__(self ):
+        return len(self.vertices)
 
-    def add_vertex(self, node):
-        self.num_vertices = self.num_vertices + 1
-        new_vertex = Vertex(node)
-        self.vert_dict[node] = new_vertex
-
-    def get_vertex(self, n):
-        if n in self.vert_dict:
-            return self.vert_dict[n]
-        else:
-            return None
-
-    def add_edge(self, frm, to, cost = 0):
-        if frm not in self.vert_dict:
-            self.add_vertex(frm)
-        if to not in self.vert_dict:
-            self.add_vertex(to)
-
-        self.vert_dict[frm].add_neighbor(self.vert_dict[to], cost)
-        self.vert_dict[to].add_neighbor(self.vert_dict[frm], cost)
-
-    def get_vertices(self):
-        return self.vert_dict.keys()
+Graph = UnweightedGraph
+UnweightedGraph.addEdge = UnweightedGraph.add_edge
+UnweightedGraph.getVertexCover =UnweightedGraph.get_minimum_vertex_cover

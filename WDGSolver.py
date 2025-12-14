@@ -1,66 +1,89 @@
+"""
+WDGSolver solves 2-agent MAPF to compute edge weights for EWMVC problem
+
+Reference:  Li, J., Felner, A., Boyarski, E., Ma, H., & Koenig, S. (2019). "Improved Heuristics for Multi-Agent Path 
+Finding with Conflict-Based Search."
+
+"""
+
 import time as timer
-from mdd import buildMDDTree, get_all_optimal_paths, buildJointMDD, check_jointMDD_for_dependency, check_MDDs_for_conflict, balanceMDDs
+import copy
+from mdd import (buildMDDTree, get_all_optimal_paths, buildJointMDD, check_jointMDD_for_dependency, check_MDDs_for_conflict, balanceMDDs)
 from mvc import Graph
 from single_agent_planner import a_star, get_sum_of_cost
-from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint
-import copy
-from CGSolver import CGSolver
-import pulp as pl
-from pulp import LpProblem, LpMinimize, LpVariable, value
+from cbs import CBSSolver, detect_collisions, disjoint_splitting, paths_violate_constraint, standard_splitting
 from heuristic_cache import HeuristicCache
+from CGSolver import CGSolver
+from pulp import LpProblem, LpMinimize, LpVariable, value, PULP_CBC_CMD
 
 
 class WDGSolver(CBSSolver):
 
-
     def __init__(self, my_map, starts, goals):
+        """
+        initialize WDG solver with heuristic cache for memorization method
+        """
         super().__init__(my_map, starts, goals)
         self.cache = HeuristicCache()
-    
-    def get_wdg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints, debug=False):
-        dependencies = []
+
+    def get_wdg_heuristic(self, my_map, paths, starts, goals, low_level_h, constraints ):
+        """
+        Compute WDG heuristic 
         
+        Algorithm:
+        - Build MDDs for all agents
+        - Find dependent pairs (same as DG)
+        - For each dependent pair (i,j):
+           - Solve 2-agent MAPF to find optimal joint cost
+           - Compute delta_ij = individual_costs - joint_cost
+        - Formulate EWMVC as ILP:
+           - Variables: x_i (weight for agent i)
+           - Constraints: x_i + x_j >= delta_ij for each dependent pair
+           - Objective: minimize sum of x_i
+        - Solve ILP and return objective value
+        
+        """
+        # get cached wdg heuristic for constraint set
+        cached_h = self.cache.get_wdg(constraints )
+        if cached_h is not None:
+            return int(cached_h)
+        
+        if len(constraints) > 5:
+            self.cache.store_wdg(constraints, 1)
+            return 1
+        
+        dependencies = []
         all_paths = []
+        # stores MDDs for each agent
         all_mdds = []
         
-        timeout_count = 0
-        max_timeouts = 3
-        
-        if debug:
-            print(f"\n[WDG DEBUG] Starting heuristic calculation for {len(paths)} agents")
-        
-        # build MDDs for all agents 
+        # build MDDs for all agents
         for i in range(len(paths)):
-            # Check cache first
-            cached_mdd = self.cache.get_mdd(i, constraints)
+            # try to get cached MDD
+            cached_mdd = self.cache.get_mdd(i, constraints )
             
             if cached_mdd is not None:
+                # use cached MDD
                 optimal_paths, root_node, nodes_dict = cached_mdd
-                if debug:
-                    print(f"[WDG DEBUG] Agent {i}: Using cached MDD, {len(optimal_paths)} paths, cost={len(optimal_paths[0])-1}")
             else:
-
-                optimal_paths = get_all_optimal_paths(my_map, starts[i], goals[i], low_level_h[i], i, constraints, max_paths=200)
+                # compute new MDD
+                optimal_paths = get_all_optimal_paths(
+                    my_map, starts[i], goals[i], low_level_h[i], i, constraints, max_paths = 200
+                )
+                
                 if not optimal_paths:
-                    if debug:
-                        print(f"[WDG DEBUG] Agent {i}: No optimal paths found!")
-                    return 0
+                    return len(paths)
                 
+                # build MDD tree from optimal paths
                 root_node, nodes_dict = buildMDDTree(optimal_paths)
-                
-                # store in cache
+
                 self.cache.store_mdd(i, constraints, optimal_paths, root_node, nodes_dict)
-                
-                if debug:
-                    print(f"[WDG DEBUG] Agent {i}: Computed MDD, {len(optimal_paths)} paths, cost={len(optimal_paths[0])-1}")
             
             all_paths.append(optimal_paths)
             all_mdds.append((root_node, nodes_dict))
         
+        # get current collisions from solution
         current_collisions = detect_collisions(paths)
-        
-        if debug:
-            print(f"[WDG DEBUG] Found {len(current_collisions)} collisions in current solution")
         
         # build set of agent pairs that have collisions
         collision_pairs = set()
@@ -70,193 +93,106 @@ class WDGSolver(CBSSolver):
                 a1, a2 = a2, a1
             collision_pairs.add((a1, a2))
         
-        # check all pairs that have collisions
+        # check dependency for each colliding pair
         for i, j in collision_pairs:
-            if debug:
-                print(f"[WDG DEBUG] Checking agents {i} and {j}")
+            cached_dep = self.cache.get_dependency(i, j, constraints)
             
+            if cached_dep is not None:
+                # use cached result
+                if cached_dep:
+                    dependencies.append((i, j))
+                continue
+            
+            # compute dependency
             paths_i = all_paths[i]
             root_i, nodes_dict_i = all_mdds[i]
             paths_j = all_paths[j]
             root_j, nodes_dict_j = all_mdds[j]
             
-            # check cache for dependency first
-            cached_dep = self.cache.get_dependency(i, j, constraints)
-            
-            if cached_dep is not None:
-                is_dependent = cached_dep
-                if debug:
-                    print(f"[WDG DEBUG] Agents {i} and {j}: Using cached dependency = {is_dependent}")
-            else:
-                balanceMDDs(paths_i, paths_j, nodes_dict_i, nodes_dict_j)
-                is_cardinal = check_MDDs_for_conflict(nodes_dict_i, nodes_dict_j)
-                
-                if is_cardinal:
-                    is_dependent = True
-                    if debug:
-                        print(f"[WDG DEBUG] Agents {i} and {j}: CARDINAL conflict")
-                else:
-                    try:
-                        joint_root, joint_bottom = buildJointMDD(
-                            paths_i, paths_j, 
-                            root_i, nodes_dict_i,
-                            root_j, nodes_dict_j
-                        )
-                        is_dependent = check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0])
-                    except Exception as e:
-                        is_dependent = True
-                        if debug:
-                            print(f"[WDG DEBUG] Agents {i} and {j}: Exception: {e}")
-                
-                self.cache.store_dependency(i, j, constraints, is_dependent)
-            
-            if not is_dependent:
-                if debug:
-                    print(f"[WDG DEBUG] Agents {i} and {j}: INDEPENDENT")
+            # for fast path check cardinal conflict 
+            balanceMDDs(paths_i, paths_j, nodes_dict_i, nodes_dict_j)
+            if check_MDDs_for_conflict(nodes_dict_i, nodes_dict_j):
+                dependencies.append((i, j))
+                self.cache.store_dependency(i, j, constraints, True)
                 continue
             
-            cached_delta = self.cache.get_delta(i, j, constraints)
-            
-            if cached_delta is not None:
-                weight = cached_delta
-                if debug:
-                    print(f"[WDG DEBUG] Agents {i} and {j}: Using cached Δij = {weight}")
-            else:
-                if timeout_count >= max_timeouts:
-                    if debug:
-                        print(f"[WDG DEBUG] Agents {i} and {j}: Too many timeouts, using Δij=1 (fast fallback)")
-                    weight = 1
-                    self.cache.store_delta(i, j, constraints, weight)
-                    dependencies.append((i, j, weight))
-                    continue
+            # for slow path check cardinal conflict 
+            try:
+                # build joint MDD for agent pair
+                joint_root, joint_bottom = buildJointMDD(
+                    paths_i, paths_j,
+                    root_i, nodes_dict_i,
+                    root_j, nodes_dict_j
+                )
                 
-                joint_constraints = [c for c in constraints 
-                                   if c['agent'] == i or c['agent'] == j]
+                # check if agents are dependent
+                is_dependent = check_jointMDD_for_dependency(joint_bottom, paths_i[0], paths_j[0])
                 
-                two_agent_constraints = []
-                for c in joint_constraints:
-                    new_c = copy.deepcopy(c)
-                    if c['agent'] == i:
-                        new_c['agent'] = 0
-                    elif c['agent'] == j:
-                        new_c['agent'] = 1
-                    two_agent_constraints.append(new_c)
+                if is_dependent:
+                    dependencies.append((i, j))
                 
-                if debug:
-                    print(f"[WDG DEBUG] Agents {i} and {j}: Computing Δij with {len(two_agent_constraints)} constraints")
-                
-                try:
-                    joint_solver = CGSolver(my_map, [starts[i], starts[j]], 
-                                          [goals[i], goals[j]])
+                # cache the result
+                self.cache.store_dependency(i, j, constraints, is_dependent)
                     
-                    import signal
-                    
-                    def timeout_handler(signum, frame):
-                        raise TimeoutError("2-agent CBS timeout")
-                    
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(0) 
-                    signal.setitimer(signal.ITIMER_REAL, 0.3)
-                    
-                    try:
-                        joint_paths = joint_solver.find_solution(
-                            disjoint=False, 
-                            root_constraints=two_agent_constraints,
-                            root_h=1,
-                            record_results=False
-                        )
-                        signal.setitimer(signal.ITIMER_REAL, 0) 
-                        
-                        if joint_paths is None:
-                            if debug:
-                                print(f"[WDG DEBUG] Failed to find joint paths for {i},{j}")
-                            weight = 1
-                        else:
-                            joint_cost = get_sum_of_cost(joint_paths)
-                            individual_cost = (len(paths[i]) - 1) + (len(paths[j]) - 1)
-                            weight = max(1, joint_cost - individual_cost)
-                            
-                            if debug:
-                                print(f"[WDG DEBUG] Agents {i}-{j}: individual={individual_cost}, joint={joint_cost}, Δij={weight}")
-                    
-                    except TimeoutError:
-                        signal.setitimer(signal.ITIMER_REAL, 0)
-                        timeout_count += 1 
-                        if debug:
-                            print(f"[WDG DEBUG] Agents {i},{j}: Timeout ({timeout_count}/{max_timeouts}), using Δij=1")
-                        weight = 1
-                except Exception as e:
-                    if debug:
-                        print(f"[WDG DEBUG] Exception solving two-agent for {i},{j}: {e}")
-                    weight = 1
-                
+            except Exception:
+                dependencies.append((i, j))
+                self.cache.store_dependency(i, j, constraints, True)
         
-                self.cache.store_delta(i, j, constraints, weight)
-            
-            dependencies.append((i, j, weight))
-        
-        if debug:
-            print(f"[WDG DEBUG] Total dependencies: {len(dependencies)}")
-        
+        # No dependencies - no conflicts need to be resolved
         if not dependencies:
-            if debug:
-                print(f"[WDG DEBUG] No dependencies, returning 0")
+            self.cache.store_wdg(constraints, 0)
             return 0
-
-        weights = [w for _, _, w in dependencies]
-        if all(w == 1 for w in weights):
-            if debug:
-                print(f"[WDG DEBUG] All weights are 1, using unweighted MVC")
-            g = Graph(len(paths))
-            for agent1, agent2, _ in dependencies:
-                g.addEdge(agent1, agent2)
-            vertex_cover = g.getVertexCover()
-            return len(vertex_cover)
         
-        try:
-            model = LpProblem("WDG_heuristic", LpMinimize)
-            lp_agents = {}
-            
-            agents_in_deps = set()
-            for agent1, agent2, weight in dependencies:
-                agents_in_deps.add(agent1)
-                agents_in_deps.add(agent2)
-            
-            for agent in agents_in_deps:
-                lp_agents[agent] = LpVariable(f"agent{agent}_weight", lowBound=0, cat="Integer")
+        # solve EWMVC using ILP
+        model = LpProblem("WDG_heuristic", LpMinimize)
+        lp_agents = {}
 
-            for agent1, agent2, weight in dependencies:
-                model += lp_agents[agent1] + lp_agents[agent2] >= weight
+        # Cceate constraints for each dependent pair
+        for agent1, agent2 in dependencies:
+            if agent1 not in lp_agents:
+                lp_agents[agent1] = LpVariable(f"agent{agent1}_weight", lowBound=0, cat="Integer")
+            if agent2 not in lp_agents:
+                lp_agents[agent2] = LpVariable(f"agent{agent2}_weight", lowBound=0, cat="Integer")
+
+            # compute delta_ij
+            delta = self.cache.get_pair_weight(agent1, agent2, constraints)
             
-            model += sum(lp_agents.values())
+            if delta is None:
+                # solve 2-agent MAPF to find optimal joint cost
+                joint_paths = CGSolver(
+                    my_map, 
+                    [starts[agent1], starts[agent2]], 
+                    [goals[agent1], goals[agent2]]
+                ).find_solution(False, record_results=False)
+
+                if joint_paths is None:
+                    delta = 1
+                else:
+                    # delta = individual costs - joint cost
+                    individual_cost = len(all_paths[agent1][0]) + len(all_paths[agent2][0])
+                    joint_cost = get_sum_of_cost(joint_paths)
+                    delta = individual_cost - joint_cost
+
+                self.cache.store_pair_weight(agent1, agent2, constraints, delta)
             
-            model.solve(pl.PULP_CBC_CMD(msg=False))
-            
-            result = value(model.objective)
-            
-            if debug:
-                print(f"[WDG DEBUG] LP solver result: {result}")
-            
-            if result is None:
-                if debug:
-                    print(f"[WDG DEBUG] LP failed, falling back to MVC")
-                g = Graph(len(paths))
-                for agent1, agent2, _ in dependencies:
-                    g.addEdge(agent1, agent2)
-                vertex_cover = g.getVertexCover()
-                return len(vertex_cover)
-            
-            return int(round(result))
+            #add ILP constrain (x_i + x_j >= delta_ij)
+            model += lp_agents[agent1] + lp_agents[agent2] >= delta
+
+        model += sum(lp_agents.values())
         
-        except Exception as e:
-            if debug:
-                print(f"[WDG DEBUG] LP exception: {e}")
-            return 0
+        # solve ILP
+        model.solve(PULP_CBC_CMD(msg=False))
+        hval = int(value(model.objective))
+        
+        self.cache.store_wdg(constraints, hval)
+        return hval
     
-    def find_solution(self, disjoint=True, root_constraints=[], root_h=0, record_results=True):
-        """Find optimal MAPF solution using CBS with WDG heuristic."""
+    # find optimal MAPF solution using CBS with WDG heuristic
+    def find_solution(self, disjoint = True, root_constraints = [], root_h = 0, record_results = True):
+
         self.start_time = timer.time()
    
+        # initialize root node
         root = {
             'cost': 0,
             'h': root_h,
@@ -265,49 +201,61 @@ class WDGSolver(CBSSolver):
             'collisions': []
         }
 
+        # compute initial paths for all agents
         for i in range(self.num_of_agents):
-            path = a_star(self.my_map, self.starts[i], self.goals[i], 
-                         self.heuristics[i], i, root['constraints'])
+            path = a_star(
+                self.my_map, self.starts[i], self.goals[i],
+                self.heuristics[i], i, root['constraints']
+            )
             if path is None:
                 raise BaseException('No solutions')
             root['paths'].append(path)
         
+        # compute root node properties
         root['cost'] = get_sum_of_cost(root['paths'])
-        root['h'] = self.get_wdg_heuristic(self.my_map, root['paths'], self.starts, 
-                                          self.goals, self.heuristics, root['constraints'])
+        root['h'] = self.get_wdg_heuristic(
+            self.my_map, root['paths'], self.starts,
+            self.goals, self.heuristics, root[ 'constraints']
+        )
+        self.root_h_value = root['h']
         root['collisions'] = detect_collisions(root['paths'])
         self.push_node(root)
         
+        # A* search with WDG heuristic
         while len(self.open_list) > 0:
             curr = self.pop_node()
-            
+
             if not curr['collisions']:
                 if record_results:
                     self.print_results(curr)
-                    self.cache.print_stats() 
                 return curr['paths']
             
+            # split on first collision
             collision = curr['collisions'][0]
-            constraints = disjoint_splitting(collision) if disjoint else self.standard_splitting(collision)
+            constraints = disjoint_splitting(collision) if disjoint else standard_splitting(collision)
             
+            # generate child nodes
             for constraint in constraints:
-                is_conflicting = self._is_conflicting_constraint(constraint, curr['constraints'])
-                
-                if is_conflicting:
+                if self._is_conflicting_constraint(constraint, curr['constraints']):
                     continue
                 
+                # create child node
                 child = {}
                 child['constraints'] = copy.deepcopy(curr['constraints'])
                 if constraint not in child['constraints']:
                     child['constraints'].append(constraint)
                 child['paths'] = copy.deepcopy(curr['paths'])
                 
+                # uses disjoint splitting
                 prune_child = False
                 if constraint['positive']:
+                    # replan for agents that violate the positive constraint
                     conflicted_agents = paths_violate_constraint(constraint, child['paths'])
                     for i in conflicted_agents:
-                        new_path = a_star(self.my_map, self.starts[i], self.goals[i], 
-                                        self.heuristics[i], i, child['constraints'])
+                        new_path = a_star(
+                            self.my_map, self.starts[i], self.goals[i],
+                            self.heuristics[i], i, child['constraints']
+                        )
                         if new_path is None:
                             prune_child = True
                             break
@@ -316,112 +264,72 @@ class WDGSolver(CBSSolver):
                 
                 if prune_child:
                     continue
-                
                 agent = constraint['agent']
-                path = a_star(self.my_map, self.starts[agent], self.goals[agent], 
-                            self.heuristics[agent], agent, child['constraints'])
+                path = a_star(
+                    self.my_map, self.starts[agent], self.goals[agent],
+                    self.heuristics[agent], agent, child['constraints']
+                )
                 
+                # add child to open list if valid path found
                 if path is not None:
                     child['paths'][agent] = path
                     child['collisions'] = detect_collisions(child['paths'])
                     child['cost'] = get_sum_of_cost(child['paths'])
-                    child['h'] = self.get_wdg_heuristic(self.my_map, child['paths'], 
-                                                       self.starts, self.goals, 
-                                                       self.heuristics, child['constraints'])
-                    
+                    child['h'] = self.get_wdg_heuristic(
+                        self.my_map, child['paths'],
+                        self.starts, self.goals,
+                        self.heuristics, child['constraints']
+                    )
                     self.push_node(child)
-        
         if record_results:
             self.print_results(root)
-            self.cache.print_stats()
         return None
-    
-    def push_node(self, node):
-        import heapq
-        f_val = node['cost'] + node['h']
-        heapq.heappush(self.open_list, (f_val, len(node['collisions']), 
-                                       self.num_of_generated, node))
-        print("Generate node {}".format(self.num_of_generated))
-        self.num_of_generated += 1
     
     def _is_conflicting_constraint(self, constraint, existing_constraints):
 
+        # duplicate constraint
         if constraint in existing_constraints:
             return True
         
+        # get constraints at same timestep for same agent
         t = constraint['timestep']
-        constraints_at_t = [c for c in existing_constraints 
-                           if c['timestep'] == t and c['agent'] == constraint['agent']]
+        constraints_at_t = [
+            c for c in existing_constraints
+            if c['timestep'] == t and c['agent'] == constraint['agent' ]
+        ]
         
-        is_new_vertex_constraint = len(constraint['loc']) == 1
+        # check constraint type
+        is_new_vertex = len(constraint['loc']) == 1
         
-        for old_constraint in constraints_at_t:
-            is_old_vertex_constraint = len(old_constraint['loc']) == 1
+        # check conflicts with each existing constraint
+        for old in constraints_at_t:
+            is_old_vertex = len(old['loc']) == 1
             
-            if is_old_vertex_constraint:
-                if old_constraint['positive']:
-                    if is_new_vertex_constraint and not constraint['positive'] and \
-                       constraint['loc'] == old_constraint['loc']:
+            if is_old_vertex:
+                if old['positive']:
+                    if is_new_vertex and not constraint['positive'] and constraint['loc'] == old['loc']:
                         return True
-                    if is_new_vertex_constraint and constraint['positive'] and \
-                       constraint['loc'] != old_constraint['loc']:
+                    if is_new_vertex and constraint['positive'] and constraint['loc'] != old['loc']:
                         return True
-                    if not is_new_vertex_constraint and constraint['positive'] and \
-                       constraint['loc'][1] != old_constraint['loc'][0]:
+                    if not is_new_vertex and constraint['positive'] and constraint['loc'][1] != old['loc'][0]:
                         return True
                 else:
-                    if is_new_vertex_constraint and constraint['positive'] and \
-                       constraint['loc'] == old_constraint['loc']:
+                    if is_new_vertex and constraint['positive'] and constraint['loc'] == old['loc']:
                         return True
-                    if not is_new_vertex_constraint and constraint['positive'] and \
-                       constraint['loc'][1] == old_constraint['loc'][0]:
+                    if not is_new_vertex and constraint['positive'] and constraint['loc'][1] == old['loc'][0]:
                         return True
             else:
-                if old_constraint['positive']:
-                    if is_new_vertex_constraint and constraint['positive'] and \
-                       constraint['loc'][0] != old_constraint['loc'][1]:
+                if old['positive']:
+                    if is_new_vertex and constraint['positive'] and constraint['loc'][0] != old['loc'][1]:
                         return True
-                    if is_new_vertex_constraint and not constraint['positive'] and \
-                       constraint['loc'][0] == old_constraint['loc'][1]:
+                    if is_new_vertex and not constraint['positive'] and constraint['loc'][0] == old['loc'][1]:
                         return True
-                    if not is_new_vertex_constraint and constraint['positive']:
+                    if not is_new_vertex and constraint['positive']:
                         return True
-                    if not is_new_vertex_constraint and not constraint['positive'] and \
-                       constraint['loc'] == old_constraint['loc']:
+                    if not is_new_vertex and not constraint['positive'] and constraint['loc'] == old['loc']:
                         return True
                 else:
-                    if not is_new_vertex_constraint and constraint['positive'] and \
-                       constraint['loc'] == old_constraint['loc']:
+                    if not is_new_vertex and constraint['positive'] and constraint['loc'] == old['loc']:
                         return True
         
         return False
-    
-    def standard_splitting(self, collision):
-        constraints = []
-        if len(collision['loc']) == 1:
-            constraints.append({
-                'agent': collision['a1'],
-                'loc': collision['loc'],
-                'timestep': collision['timestep'],
-                'positive': False
-            })
-            constraints.append({
-                'agent': collision['a2'],
-                'loc': collision['loc'],
-                'timestep': collision['timestep'],
-                'positive': False
-            })
-        else:
-            constraints.append({
-                'agent': collision['a1'],
-                'loc': [collision['loc'][0], collision['loc'][1]],
-                'timestep': collision['timestep'],
-                'positive': False
-            })
-            constraints.append({
-                'agent': collision['a2'],
-                'loc': [collision['loc'][1], collision['loc'][0]],
-                'timestep': collision['timestep'],
-                'positive': False
-            })
-        return constraints
