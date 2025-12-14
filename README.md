@@ -42,3 +42,6 @@ python3 comprehensive_mapf_benchmark.py --repeat 1 --benchmark_dir custominstanc
 ## References
 
 [1] Li, J., Felner, A., Boyarski, E., Ma, H., Koenig, S., University of Southern California, & Ben Gurion University of the Negev. (2019). Improved Heuristics for Multi-Agent Path Finding with Conflict-Based Search. In Proceedings of the Twenty-Eighth International Joint Conference on Artificial Intelligence (IJCAI-19). https://www.ijcai.org/proceedings/2019/0063.pdf
+
+[2] Stern, R., Sturtevant, N., Felner, A., Koenig, S., Ma, H., Walker, T., Li, J., Atzmon, D., Cohen, L., Kumar, T. K. S., Boyarski, E., & Bartak, R. (2021). Multi-Agent Pathfinding: Definitions, variants, and benchmarks. Proceedings of the International Symposium on Combinatorial Search, 10(1), 151–158. https://movingai.com/benchmarks/mapf/index.html
+
