@@ -39,6 +39,16 @@ Run the benchmark script to compare all solvers:
 ```bash
 python3 comprehensive_mapf_benchmark.py --repeat 1 --benchmark_dir custominstances/Benchmarks
 ```
+
+To run particular algorithm on a specific MAPF instances:
+
+``` bash
+python3 run_experiments.py --instance custominstances/exp2_5.txt --solver WDGS
+```
+> Note: 
+> - WDGS can be replaced by CBS, CGS, DGS
+> - custominstances/exp2_5.txt can be replaced by any valid .txt MAPF instance file
+
 ## References
 
 [1] Li, J., Felner, A., Boyarski, E., Ma, H., Koenig, S., University of Southern California, & Ben Gurion University of the Negev. (2019). Improved Heuristics for Multi-Agent Path Finding with Conflict-Based Search. In Proceedings of the Twenty-Eighth International Joint Conference on Artificial Intelligence (IJCAI-19). https://www.ijcai.org/proceedings/2019/0063.pdf
