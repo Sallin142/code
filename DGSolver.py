@@ -32,7 +32,7 @@ class DGSolver(CBSSolver):
            if path is fast: check for cardinal conflict
            if path is slow: build joint MDD and check dependency
         - Build dependency graph from dependent pairs
-        - Compute minimum vertex cover size as h-value
+        - compute minimum vertex cover size as h-value
         """
         # exit if the constraints are too large
         if len(constraints) > 5:
@@ -59,7 +59,7 @@ class DGSolver(CBSSolver):
                 if not optimal_paths:
                     return len(paths)
                 
-                root_node, nodes_dict = buildMDDTree(optimal_paths)             
+                root_node, nodes_dict = buildMDDTree(optimal_paths )             
                 # store in cache
                 self.cache.store_mdd(i, constraints, optimal_paths, root_node, nodes_dict)
             
@@ -168,7 +168,7 @@ class DGSolver(CBSSolver):
             if not curr['collisions']:
                 if record_results:
                     self.print_results(curr)
-                return curr['paths']
+                return curr['paths' ]
             
             # split on first collision
             collision = curr['collisions'][0]
@@ -207,7 +207,7 @@ class DGSolver(CBSSolver):
                 # replan for the constrained agent
                 agent = constraint['agent']
                 path = a_star(
-                    self.my_map, self.starts[agent], self.goals[agent], 
+                    self.my_map, self.starts[agent] , self.goals[agent], 
                     self.heuristics[agent], agent, child['constraints']
                 )
                 
@@ -242,7 +242,7 @@ class DGSolver(CBSSolver):
         
         # check conflicts with each existing constraint
         for old in constraints_at_t:
-            is_old_vertex = len(old['loc']) == 1
+            is_old_vertex = len(old['loc']) ==1
             
             if is_old_vertex:
                 if old['positive']:

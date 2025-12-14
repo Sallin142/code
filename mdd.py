@@ -245,13 +245,13 @@ def get_all_optimal_paths(my_map, start_loc, goal_loc, h_values, agent, constrai
                     'g_val': curr['g_val'] + 1,
                     'h_val': h_values[child_loc],
                     'parent': curr,
-                    'time': curr['time'] + 1}
+                    'time': curr['time'] +1}
 
             # check if move violates another agent's positive constraint
             pos_constrained = False
             check_time = curr['time'] + 1
             if check_time in pos_constraint_table:
-                constraints = pos_constraint_table[check_time]
+                constraints =pos_constraint_table[ check_time]
                 for constraint in constraints:
                     location = constraint['loc']
                     if len(location) == 1:
@@ -400,7 +400,7 @@ def check_MDDs_for_conflict(node_dict1, node_dict2):
     return False
 
 
-# make sure two MDDs to have the same height by adding wait actions
+# make sure two mdds to have the same height by adding wait actions
 def balanceMDDs(paths1, paths2, node_dict1, node_dict2):
     height1 = len(paths1[0])
     height2 = len(paths2[0])
@@ -428,7 +428,7 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
             extendMDDTree(bottom_node, height2-height1, node_dict1 )
         else:
             goal_loc = paths2[0][-1]
-            bottom_node = node_dict2[(goal_loc, height2-1)]
+            bottom_node = node_dict2[(goal_loc, height2-1 )]
             extendMDDTree( bottom_node, height1-height2, node_dict2)
 
     # build joint MDD using BFS
@@ -456,7 +456,7 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
         node1 = node_dict1[(loc1, time1)]
         node2 = node_dict2[(loc2, time2)]
 
-        # if either agent reached the end, stop exploring this branch
+        # if either agent reached the end make it stop
         if len(node1.children) == 0 or len(node2.children) == 0:
             continue
 
@@ -482,7 +482,7 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
             if params in existing_dict:
                 new_node = existing_dict[params]
             else:
-                new_node = JointMDDNode(next_loc1, next_loc2, curr.timestep + 1)
+                new_node = JointMDDNode( next_loc1, next_loc2, curr.timestep + 1)
                 existing_dict[params] = new_node
                 q.put(new_node )
             

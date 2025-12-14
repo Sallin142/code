@@ -59,9 +59,9 @@ def import_mapf_instance(filename):
     goals = []
     for a in range(num_agents):
         line = f.readline()
-        sx, sy, gx, gy = [int(x) for x in line.split(' ')]
+        sx, sy, gx, gy = [int(x) for x in line.split(' ') ]
         starts.append((sx, sy))
-        goals.append((gx, gy))
+        goals.append((gx, gy ))
     
     f.close()
     return my_map, starts, goals
@@ -119,11 +119,10 @@ def run_solver(solver_name, my_map, starts, goals, timeout = 60):
         }
 
 def get_root_h_value(solver_name, my_map, starts, goals):
-    """Get just the root h-value for a solver (faster than full search)"""
     try:
         # Create solver
         if solver_name == "CBS":
-            return 0  # CBS has no heuristic
+            return 0
         elif solver_name == "CG":
             solver = CGSolver(my_map, starts, goals)
             method = solver.get_cg_heuristic
@@ -136,7 +135,7 @@ def get_root_h_value(solver_name, my_map, starts, goals):
         else:
             return -1
         
-        # Get initial paths
+        # get initial paths
         paths = []
         for i in range(len(starts)):
             path = a_star(my_map, starts[i], goals[i], solver.heuristics[i], i, [])
@@ -144,38 +143,34 @@ def get_root_h_value(solver_name, my_map, starts, goals):
                 return -1
             paths.append(path)
         
-        # Compute h-value
+        # compute h-value
         h_val = method(my_map, paths, starts, goals, solver.heuristics, [])
         return h_val if h_val != -1 else 0
         
     except Exception as e:
-        print(f"      ERROR computing h-value: {e}")
+        print(f"ERROR computing h-value: {e}")
         return -1
 
-def process_agent_folder(map_name, num_agents, solvers, base_path="real-map-instance"):
-    """
-    Process all instances for a specific map type and agent count
-    Returns: DataFrame with results for this configuration
-    """
-    # Construct folder path
-    # e.g., real-map-instance/empty-map/empty-32-32-10agents
-    # Extract the prefix from map_name (e.g., "empty-map" -> "empty")
-    map_prefix = map_name.split('-')[0]  # "empty-map" -> "empty"
+# process all instances for a specific map type and agent count
+def process_agent_folder(map_name, num_agents, solvers, base_path = "real-map-instance"):
+
+    # construct folder path
+    map_prefix = map_name.split('-')[0]
     folder_name = f"{map_prefix}-32-32-{num_agents}agents"
-    folder_path = os.path.join(base_path, map_name, folder_name )
+    folder_path = os.path.join(base_path, map_name , folder_name )
     
     if not os.path.exists(folder_path):
-        print(f"    WARNING: Folder not found: {folder_path}")
+        print(f"WARNING: Folder not found: {folder_path}")
         return None
     
     print(f"\n  Processing {num_agents} agents...")
-    print(f"  Folder: {folder_path}")
+    print(f"Folder: {folder_path}")
     
     # get all instance files
     instance_files = sorted(glob.glob(os.path.join( folder_path, "*.txt")))
     
     if len(instance_files) == 0:
-        print(f"    No instance files found!")
+        print(f"No instance files found!")
         return None
     
     print(f"  Found {len(instance_files)} instances")
@@ -192,17 +187,17 @@ def process_agent_folder(map_name, num_agents, solvers, base_path="real-map-inst
         'total': 0
     } for solver in solvers}
     
-    # Process each instance
+    # process each instance
     for idx, instance_file in enumerate(instance_files, 1):
         instance_name = os.path.basename(instance_file)
         print(f"  [{idx:2d}/{len(instance_files)}] {instance_name}")
         
         # load instance
-        my_map, starts, goals = import_mapf_instance(instance_file)
+        my_map, starts, goals = import_mapf_instance( instance_file)
         
-        # Run each solver
+        # run each solver
         for solver_name in solvers:
-            print(f"      {solver_name}...", end=' ')
+            print(f"{solver_name}...", end=' ')
             
             result = run_solver(solver_name, my_map, starts, goals)
             
@@ -225,7 +220,7 @@ def process_agent_folder(map_name, num_agents, solvers, base_path="real-map-inst
             else:
                 print(f"FAILED")
     
-    # Compute averages
+    # compute averages
     print(f"\n  Summary for {num_agents} agents:")
     print(f"  {'-'*70}")
     
@@ -292,21 +287,20 @@ def create_results_table(all_results, solvers, map_name, output_folder):
         summary_rows.append(summary_row)
     
     summary_df = pd.DataFrame(summary_rows)
-    
     summary_file = os.path.join(output_folder, f'{map_name}_summary.csv')
     summary_df.to_csv(summary_file, index=False)
     print(f"Summary table saved to: {summary_file}")
     
     return df
 
+# plot
 def create_plots(df, solvers, map_name, output_folder):
-    """Create visualization plots"""
     if df is None or df.empty:
         return
     
     # Plot 1: H-values comparison (Bar chart)
     if all(f'{solver}_h_avg' in df.columns for solver in solvers if solver != 'CBS'):
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=( 12, 6))
         
         x = np.arange(len(df))
         width = 0.25
@@ -317,23 +311,23 @@ def create_plots(df, solvers, map_name, output_folder):
         for i, solver in enumerate(heuristic_solvers):
             offset = width * (i - len(heuristic_solvers)/2 + 0.5)
             bars = ax.bar(x + offset, df[f'{solver}_h_avg'], width, 
-                         label=solver, alpha=0.8, color=colors[i])
+                         label = solver, alpha = 0.8, color = colors[i])
             
             # add value labels
             for bar in bars:
                 height = bar.get_height()
                 if height > 0:
                     ax.text(bar.get_x() + bar.get_width()/2., height,
-                           f'{height:.1f}', ha='center', va='bottom', fontsize=9)
+                           f'{height:.1f}', ha = 'center', va = 'bottom', fontsize = 9)
         
-        ax.set_xlabel('Number of Agents', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Average h-value of Root CT Node', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Number of Agents', fontsize = 12, fontweight = 'bold')
+        ax.set_ylabel('Average h-value of Root CT Node', fontsize = 12, fontweight = 'bold')
         ax.set_title(f'{map_name.replace("-", " ").title()}: Root Node H-values', 
-                    fontsize=14, fontweight='bold')
+                    fontsize = 14, fontweight = 'bold')
         ax.set_xticks(x)
-        ax.set_xticklabels(df['num_agents'].astype(int))
+        ax.set_xticklabels(df['num_agents'].astype(int ))
         ax.legend(fontsize=11)
-        ax.grid(axis='y', alpha=0.3, linestyle='--')
+        ax.grid(axis='y', alpha = 0.3, linestyle = '--')
         
         plt.tight_layout()
         plt.savefig(os.path.join(output_folder, f'{map_name}_h_values.png'), dpi = 300, bbox_inches = 'tight')
@@ -352,20 +346,20 @@ def create_plots(df, solvers, map_name, output_folder):
             mask = df[f'{solver}_instances_solved'] > 0
             if mask.any():
                 ax.plot(df[mask]['num_agents'], df[mask][col], 
-                       marker=markers[i], label=solver, linewidth=2.5, 
-                       markersize=10, color=colors[i])
+                       marker = markers[i], label = solver, linewidth = 2.5, 
+                       markersize = 10, color = colors[i])
     
-    ax.set_xlabel('Number of Agents', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Average Runtime (seconds)', fontsize=12, fontweight='bold')
+    ax.set_xlabel('Number of Agents', fontsize = 12, fontweight = 'bold')
+    ax.set_ylabel('Average Runtime (seconds)', fontsize = 12 , fontweight='bold')
     ax.set_title(f'{map_name.replace("-", " ").title()}: Runtime Comparison', 
-                fontsize=14, fontweight='bold')
-    ax.legend(fontsize=11)
-    ax.grid(True, alpha=0.3, linestyle='--')
+                fontsize = 14, fontweight = 'bold')
+    ax.legend(fontsize = 11)
+    ax.grid(True, alpha = 0.3, linestyle = '--')
     ax.set_yscale('log')
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_folder, f'{map_name}_runtime.png'), 
-               dpi=300, bbox_inches='tight')
+               dpi = 300, bbox_inches = 'tight')
     print(f"Saved: {map_name}_runtime.png")
     plt.close()
     
@@ -378,7 +372,7 @@ def create_plots(df, solvers, map_name, output_folder):
             mask = df[f'{solver}_instances_solved'] > 0
             if mask.any():
                 ax.plot(df[mask]['num_agents'], df[mask][col] / 1000, 
-                       marker=markers[i], label=solver, linewidth=2.5, 
+                       marker = markers[i], label = solver, linewidth = 2.5, 
                        markersize = 10, color = colors[i])
     
     ax.set_xlabel('Number of Agents', fontsize = 12, fontweight = 'bold')
@@ -418,7 +412,7 @@ def main():
     print("="*80)
     
     # create output folder
-    os.makedirs(args.output, exist_ok=True)
+    os.makedirs(args.output, exist_ok = True)
     
     # process each agent count
     all_results = []
