@@ -45,6 +45,12 @@ To run particular algorithm on a specific MAPF instances:
 ``` bash
 python3 run_experiments.py --instance custominstances/exp2_5.txt --solver WDGS
 ```
+
+To run the large empty map(32x32) :
+
+``` bash
+python3 real-map-benchmark.py --map empty-map --agents 5 10 20
+```
 > Note: 
 > - WDGS can be replaced by CBS, CGS, DGS
 > - custominstances/exp2_5.txt can be replaced by any valid .txt MAPF instance file
