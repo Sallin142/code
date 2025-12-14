@@ -227,7 +227,7 @@ def get_all_optimal_paths(my_map, start_loc, goal_loc, h_values, agent, constrai
                 push_node(open_list, child)
             continue
 
-        # normal expansion: try all 5 directions (including wait)
+        # normal expansion: try all 5 directions
         for dir in range(5):
             child_loc = move(curr['loc'], dir)
             
@@ -393,7 +393,6 @@ def check_MDDs_for_conflict(node_dict1, node_dict2):
         locs1 = dict1[time]
         locs2 = dict2[time]
         
-        # both must have exactly one location
         if len(locs1) == 1 and len(locs2) == 1:
             if locs1[0] == locs2[0]:
                 return True
@@ -401,8 +400,8 @@ def check_MDDs_for_conflict(node_dict1, node_dict2):
     return False
 
 
+# make sure two MDDs to have the same height by adding wait actions
 def balanceMDDs(paths1, paths2, node_dict1, node_dict2):
-    """Balance two MDDs to have the same height by adding wait actions"""
     height1 = len(paths1[0])
     height2 = len(paths2[0])
 
@@ -410,7 +409,7 @@ def balanceMDDs(paths1, paths2, node_dict1, node_dict2):
         if height1 < height2:
             goal_loc = paths1[0][-1]
             bottom_node = node_dict1[(goal_loc, height1-1)]
-            extendMDDTree(bottom_node, height2-height1, node_dict1)
+            extendMDDTree(bottom_node, height2-height1, node_dict1 )
         else:
             goal_loc = paths2[0][-1]
             bottom_node = node_dict2[(goal_loc, height2-1)]
@@ -425,8 +424,8 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
     if height1 != height2:
         if height1 < height2:
             goal_loc = paths1[0][-1]
-            bottom_node = node_dict1[(goal_loc, height1-1)]
-            extendMDDTree(bottom_node, height2-height1, node_dict1)
+            bottom_node = node_dict1[( goal_loc, height1-1)]
+            extendMDDTree(bottom_node, height2-height1, node_dict1 )
         else:
             goal_loc = paths2[0][-1]
             bottom_node = node_dict2[(goal_loc, height2-1)]
@@ -434,7 +433,7 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
 
     # build joint MDD using BFS
     q = queue.Queue()
-    root = JointMDDNode(root1.location, root2.location, 0)
+    root = JointMDDNode( root1.location, root2.location, 0)
     q.put(root)
 
     existing_dict = {
@@ -449,7 +448,7 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
         
         # update deepest node
         if curr.timestep > deepest_node.timestep:
-            deepest_node = curr
+            deepest_node =curr
 
         loc1, time1 = curr.location[0], curr.timestep
         loc2, time2 = curr.location[1], curr.timestep
@@ -464,7 +463,7 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
         loc_combinations = []
         for node1_child in node1.children:
             for node2_child in node2.children:
-                loc_combinations.append((node1_child.location, node2_child.location))
+                loc_combinations.append(( node1_child.location, node2_child.location))
 
         # build joint children
         for combo in loc_combinations:
@@ -485,21 +484,21 @@ def buildJointMDD(paths1, paths2, root1, node_dict1, root2, node_dict2):
             else:
                 new_node = JointMDDNode(next_loc1, next_loc2, curr.timestep + 1)
                 existing_dict[params] = new_node
-                q.put(new_node)
+                q.put(new_node )
             
             new_node.updateNode(curr)
     
     return root, deepest_node
 
-# Check if two agents are dependent based on their joint MDD
+
+# check if two agents are dependent based on their joint MDD
 def check_jointMDD_for_dependency(bottom_node, path1, path2):
-    optimal_time = max(len(path1), len(path2)) - 1
+    optimal_time = max(len(path1), len(path2) ) - 1
     goal_loc1 = path1[-1]
     goal_loc2 = path2[-1]
     
-    # check if bottom node reaches goals at optimal time
     if (bottom_node.location[0] != goal_loc1 or
-        bottom_node.location[1] != goal_loc2 or
+        bottom_node.location[1] !=goal_loc2 or
         bottom_node.timestep != optimal_time ):
         return True
     

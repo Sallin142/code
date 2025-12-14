@@ -91,7 +91,7 @@ class HeuristicCache:
             agent_i, agent_j = agent_j, agent_i
         
         # create cache key
-        hash_i = self._hash_constraints(agent_i, constraints)
+        hash_i = self._hash_constraints(agent_i, constraints )
         hash_j = self._hash_constraints(agent_j, constraints)
         key = (agent_i, agent_j, hash_i, hash_j )
         
